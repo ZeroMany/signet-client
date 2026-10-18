@@ -177,6 +177,7 @@ signals:
 	void background();
 public slots:
 	void open();
+	void reloadIcons();
 	void entryChanged(int id);
 	void signetdevReadUIdResp(signetdevCmdRespInfo info, QByteArray data, QByteArray mask);
 	void signetdevCmdResp(signetdevCmdRespInfo info);

@@ -209,6 +209,7 @@ LoggedInWidget::LoggedInWidget(QProgressBar *loading_progress, MainWindow *mw, Q
 	m_viewSelector->setModel(m_dataTypesModel);
 	m_viewSelector->setCurrentIndex(m_activeTypeIndex);
 	connect(m_viewSelector, SIGNAL(currentIndexChanged(int)), this, SLOT(currentTypeIndexChanged(int)));
+	connect(IconPackNotifier::get(), SIGNAL(changed()), this, SLOT(reloadIcons()));
 
 	QBoxLayout *top_layout = new QBoxLayout(QBoxLayout::TopToBottom);
 	top_layout->setAlignment(Qt::AlignTop);
@@ -976,6 +977,20 @@ void LoggedInWidget::finishTask()
 	m_searchListbox->setFilterText(QString());
 	filterTextChanged(m_searchListbox->filterText());
 	m_idTask = ID_TASK_NONE;
+}
+
+// Called when an icon pack was imported or removed in Settings.
+void LoggedInWidget::reloadIcons()
+{
+	m_iconProvider.reload();
+	for (esdbEntry *entry : m_entries) {
+		if (entry) {
+			entryIconCheck(entry);
+		}
+	}
+	if (m_activeType) {
+		populateEntryList(m_activeType, m_filterEdit->text());
+	}
 }
 
 void LoggedInWidget::entryIconCheck(esdbEntry *entry)

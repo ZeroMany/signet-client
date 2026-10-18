@@ -12,6 +12,11 @@
 #include <QSpinBox>
 #include <QFileDialog>
 #include <QDir>
+#include <QMessageBox>
+#include <QStandardPaths>
+
+#include "entryiconprovider.h"
+#include "signetapplication.h"
 
 #include "style.h"
 
@@ -104,6 +109,19 @@ SettingsDialog::SettingsDialog(MainWindow *mainWindow, bool initial) :
 		m_keyboardLayoutUnconfiguredWarning->hide();
 	}
 
+	// Icon pack used for the small pictures next to each entry
+	m_iconPackLabel = new genericText(QString());
+	m_iconPackLabel->setWordWrap(true);
+	QPushButton *importIconPackButton = new QPushButton("&Import icon pack...");
+	connect(importIconPackButton, SIGNAL(pressed()), this, SLOT(importIconPack()));
+	m_removeIconPackButton = new QPushButton("Use &built-in icons");
+	connect(m_removeIconPackButton, SIGNAL(pressed()), this, SLOT(removeIconPack()));
+	QHBoxLayout *iconPackLayout = new QHBoxLayout();
+	iconPackLayout->addWidget(m_iconPackLabel, 1);
+	iconPackLayout->addWidget(importIconPackButton);
+	iconPackLayout->addWidget(m_removeIconPackButton);
+	updateIconPackInfo();
+
 #ifndef Q_OS_MACOS
 	m_minimizeToTray = new QCheckBox("&Minimize window to system tray");
 	m_minimizeToTray->setChecked(m_settings->minimizeToTray);
@@ -122,6 +140,7 @@ SettingsDialog::SettingsDialog(MainWindow *mainWindow, bool initial) :
 	topLayout->addLayout(removableBackupIntervalLayout);
 	topLayout->addWidget(m_keyboardLayoutUnconfiguredWarning);
 	topLayout->addLayout(keyboardLayoutConfigurationLayout);
+	topLayout->addLayout(iconPackLayout);
 #ifndef Q_OS_MACOS
 	topLayout->addWidget(m_minimizeToTray);
 #endif
@@ -221,4 +240,46 @@ void SettingsDialog::localBackupPathBrowse()
 	}
 	m_localBackupPath->setText(sl.first());
 	fd->deleteLater();
+}
+
+void SettingsDialog::updateIconPackInfo()
+{
+	EntryIconProvider::PackInfo pack = EntryIconProvider::activePack();
+	QString name = pack.name.isEmpty() ? QString("unnamed pack") : pack.name;
+	QString text = QString("Entry icons: %1%2, %3 icons%4")
+		.arg(name)
+		.arg(pack.version ? QString(" version %1").arg(pack.version) : QString())
+		.arg(pack.iconCount)
+		.arg(pack.imported ? QString(" (imported)") : QString(" (built in)"));
+	m_iconPackLabel->setText(text);
+	m_removeIconPackButton->setVisible(pack.imported);
+}
+
+void SettingsDialog::importIconPack()
+{
+	QString file = QFileDialog::getOpenFileName(this, "Import icon pack",
+				QStandardPaths::writableLocation(QStandardPaths::DownloadLocation),
+				"Icon pack (*.zip)");
+	if (file.isEmpty()) {
+		return;
+	}
+	QString error;
+	if (!EntryIconProvider::importPack(file, &error)) {
+		SignetApplication::messageBoxError(QMessageBox::Warning, "Import icon pack",
+			"This icon pack could not be imported. " + error, this);
+		return;
+	}
+	updateIconPackInfo();
+	SignetApplication::messageBoxError(QMessageBox::Information, "Import icon pack",
+		"The icon pack was imported and is now used for your entries.", this);
+}
+
+void SettingsDialog::removeIconPack()
+{
+	QString error;
+	if (!EntryIconProvider::removeImportedPack(&error)) {
+		SignetApplication::messageBoxError(QMessageBox::Warning, "Remove icon pack", error, this);
+		return;
+	}
+	updateIconPackInfo();
 }
