@@ -66,7 +66,6 @@ struct exportType {
 class MainWindow : public QMainWindow
 {
 	Q_OBJECT
-	QString m_dbFilename;
 	QString m_backupDirectory;
 	localSettings m_settings;
 	esdbTypeModule *m_genericTypeModule;
@@ -77,7 +76,7 @@ class MainWindow : public QMainWindow
 
 	bool uninitializedFirmwareUpdateSupported();
 public:
-	explicit MainWindow(QString dbFilename, QWidget *parent = 0);
+	explicit MainWindow(QWidget *parent = 0);
 	void closeEvent(QCloseEvent *event);
 	~MainWindow();
 
@@ -86,11 +85,6 @@ public:
 	localSettings *getSettings()
 	{
 		return &m_settings;
-	}
-
-	QString getDatabaseFileName()
-	{
-		return m_dbFilename;
 	}
 
 	QStackedWidget *loggedInStack()
@@ -150,8 +144,6 @@ private:
 	QMenu *m_exportMenu;
 	QMenu *m_importMenu;
 
-	QAction *m_openAction;
-	QAction *m_closeAction;
 	QAction *m_saveAction;
 	QAction *m_settingsAction;
 	QAction *m_exportCSVAction;
@@ -189,7 +181,6 @@ private:
 	void sendFirmwareWriteCmd();
 	void loadSettings();
 	void saveSettings();
-	void settingsChanged();
 	void autoBackupCheck();
 	void showEvent(QShowEvent *event);
 	void backupDevice(QString fileName);
@@ -210,10 +201,8 @@ private slots:
 	void restoreError();
 	void backupError();
 	void importDone(bool success);
-	void closeUi();
 	void keyboardLayoutNotConfiguredDialogFinished(int rc);
 	void backupDatabasePromptDialogFinished(int rc);
-	void openFileDialogFinished(int rc);
 public slots:
 	void signetDevEvent(int);
 	void deviceOpened(enum signetdev_device_type dev_type);
@@ -232,7 +221,6 @@ public slots:
 	void buttonWaitTimeout();
 	void buttonWaitCancel();
 private:
-	QFileDialog *m_openFileDialog;
 	void setCentralStack(QWidget *w);
 	void updateFirmwareHC(QByteArray &datum);
 	void updateFirmware(QByteArray &datum);
@@ -251,7 +239,6 @@ public slots:
 	void abort();
 	void quit();
 	void enterDeviceState(int);
-	void openUi();
 	void logoutUi();
 	void changePasswordUi();
 	void eraseDeviceUi();
@@ -271,7 +258,6 @@ public slots:
 	void importCSVUI();
 	void exportCSVUi();
 	void aboutUi();
-	void startOnlineHelp();
 	void applyKeyboardLayoutChanges();
 	void keyboardLayoutTesterClosing(bool applyChanges);
 };

@@ -11,31 +11,8 @@
         <file>images/browse.png</file>
         <file>images/open.png</file>
         <file>images/signet.png</file>
-        <file>images/logos/facebook.png</file>
-        <file>images/logos/kickstarter.png</file>
-        <file>images/logos/twitter.png</file>
-        <file>images/logos/linkedin.png</file>
-        <file>images/logos/patreon.png</file>
-        <file>images/logos/gmail.png</file>
-        <file>images/logos/github.png</file>
-        <file>images/logos/paypal.png</file>
-        <file>images/logos/apple.png</file>
-        <file>images/logos/macrofab.png</file>
-        <file>images/logos/fandango.png</file>
-        <file>images/logos/indiegogo.png</file>
-        <file>images/logos/slack.png</file>
-        <file>images/logos/qt.png</file>
-        <file>images/logos/instagram.png</file>
-        <file>images/logos/steam.png</file>
-        <file>images/logos/tumblr.png</file>
-        <file>images/logos/amazon.png</file>
-        <file>images/logos/microsoft.png</file>
         <file>images/password.png</file>
         <file>images/user.png</file>
-        <file>images/logos/chase_bank.png</file>
-        <file>images/logos/dropbox.png</file>
-        <file>images/logos/crowdsupply.png</file>
         <file>images/generic-entry.png</file>
-        <file>images/logos/reddit.png</file>
     </qresource>
 </RCC>

@@ -102,7 +102,6 @@ void EditGeneric::setValues()
 void EditGeneric::setup(QString name)
 {
 	m_genericNameEdit = new QLineEdit(name);
-	m_genericNameEdit->setReadOnly(SignetApplication::get()->isDeviceEmulated());
 
 	m_groupField = new GroupDatabaseField(120, m_groupList, nullptr);
 

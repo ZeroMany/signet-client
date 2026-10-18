@@ -98,9 +98,8 @@ bool MainWindow::uninitializedWipeSupported()
 	return (m_deviceType == SIGNETDEV_DEVICE_HC) && ((major > 0) || (minor > 1) || (step >=3));
 }
 
-MainWindow::MainWindow(QString dbFilename, QWidget *parent) :
+MainWindow::MainWindow(QWidget *parent) :
 	QMainWindow(parent),
-	m_dbFilename(dbFilename),
 	m_wipeProgress(nullptr),
 	m_wipingWidget(nullptr),
 	m_connected(false),
@@ -144,14 +143,6 @@ MainWindow::MainWindow(QString dbFilename, QWidget *parent) :
 	m_accountTypeModule = new esdbAccountModule();
 	m_bookmarkTypeModule = new esdbBookmarkModule();
 
-	if (dbFilename.size()) {
-		int rc = signetdev_emulate_init(dbFilename.toLatin1().data());
-		if (rc) {
-			signetdev_emulate_begin();
-			m_dbFilename = dbFilename;
-		}
-	}
-
 	connect(app, SIGNAL(deviceOpened(enum signetdev_device_type)), this, SLOT(deviceOpened(enum signetdev_device_type)));
 	connect(app, SIGNAL(deviceClosed()), this, SLOT(deviceClosed()));
 	connect(app, SIGNAL(signetdevCmdResp(signetdevCmdRespInfo)),
@@ -175,13 +166,6 @@ MainWindow::MainWindow(QString dbFilename, QWidget *parent) :
 	QMenuBar *bar = new QMenuBar();
 	setMenuBar(bar);
 	m_fileMenu = bar->addMenu("&File");
-
-	m_openAction = m_fileMenu->addAction("&Open");
-	connect(m_openAction, SIGNAL(triggered(bool)), this, SLOT(openUi()));
-
-	m_closeAction = m_fileMenu->addAction("&Close");
-	connect(m_closeAction, SIGNAL(triggered(bool)), this, SLOT(closeUi()));
-	m_closeAction->setDisabled(true);
 
 	m_settingsAction = m_fileMenu->addAction("&Settings");
 
@@ -225,11 +209,7 @@ MainWindow::MainWindow(QString dbFilename, QWidget *parent) :
 	connect(m_exportCSVAction, SIGNAL(triggered(bool)), this,
 		SLOT(exportCSVUi()));
 
-	if (!m_dbFilename.size()) {
-		m_deviceMenu = bar->addMenu("&Device");
-	} else {
-		m_deviceMenu = bar->addMenu("&Database");
-	}
+	m_deviceMenu = bar->addMenu("&Device");
 
 	// Some of these don't get keyboard accelerators by design to avoid accidental activation
 
@@ -267,9 +247,6 @@ MainWindow::MainWindow(QString dbFilename, QWidget *parent) :
 
 	QMenu *helpMenu = bar->addMenu("&Help");
 
-	QAction *onlineHelpAction = helpMenu->addAction("Online &help");
-	connect(onlineHelpAction, SIGNAL(triggered(bool)), this, SLOT(startOnlineHelp()));
-
 	QAction *about_action = helpMenu->addAction("&About");
 	connect(about_action, SIGNAL(triggered(bool)), this, SLOT(aboutUi()));
 
@@ -281,22 +258,16 @@ MainWindow::MainWindow(QString dbFilename, QWidget *parent) :
 	m_backupAction->setVisible(false);
 	m_restoreAction->setVisible(false);
 	m_passwordSlots->setVisible(false);
-	if (m_dbFilename.size()) {
-		enterDeviceState(SignetApplication::STATE_NEVER_SHOWN);
-		enterDeviceState(SignetApplication::STATE_CONNECTING);
-		::signetdev_startup(nullptr, &m_signetdevCmdToken);
-	} else {
-		enterDeviceState(SignetApplication::STATE_NEVER_SHOWN);
+	enterDeviceState(SignetApplication::STATE_NEVER_SHOWN);
 #ifdef Q_OS_UNIX
-		enterDeviceState(SignetApplication::STATE_CONNECTING);
-		m_deviceType = signetdev_open_connection();
-		SignetApplication::get()->setDeviceType(m_deviceType);
-		if (m_deviceType != SIGNETDEV_DEVICE_NONE) {
-			::signetdev_startup(nullptr, &m_signetdevCmdToken);
-			enterDeviceState(SignetApplication::STATE_STARTING_DEVICE);
-		}
-#endif
+	enterDeviceState(SignetApplication::STATE_CONNECTING);
+	m_deviceType = signetdev_open_connection();
+	SignetApplication::get()->setDeviceType(m_deviceType);
+	if (m_deviceType != SIGNETDEV_DEVICE_NONE) {
+		::signetdev_startup(nullptr, &m_signetdevCmdToken);
+		enterDeviceState(SignetApplication::STATE_STARTING_DEVICE);
 	}
+#endif
 
 	loadSettings();
 	if (!m_settings.windowGeometry.size()) {
@@ -307,10 +278,6 @@ MainWindow::MainWindow(QString dbFilename, QWidget *parent) :
 		     deskRect.height() / 2 - height() / 2 + deskRect.top());
 	} else {
 		restoreGeometry(m_settings.windowGeometry);
-	}
-
-	if (m_settings.browserPluginSupport) {
-		SignetApplication::get()->startWebsocketServer();
 	}
 }
 
@@ -328,21 +295,6 @@ QString MainWindow::csvQuote(const QString &s)
 	} else {
 		return '"' + s + '"';
 	}
-}
-
-void MainWindow::startOnlineHelp()
-{
-	QUrl url;
-	switch (m_deviceType) {
-	case SIGNETDEV_DEVICE_HC:
-		url.setUrl("https://nthdimtech.com/signet-hc");
-		break;
-	case SIGNETDEV_DEVICE_ORIGINAL:
-	case SIGNETDEV_DEVICE_NONE:
-		url.setUrl("https://nthdimtech.com/signet");
-		break;
-	}
-	QDesktopServices::openUrl(url);
 }
 
 void MainWindow::connectionError()
@@ -1111,7 +1063,6 @@ void MainWindow::saveSettings()
 	}
 	QJsonDocument doc;
 	QJsonObject obj;
-	obj.insert("browserPluginSupport", QJsonValue(m_settings.browserPluginSupport));
 	obj.insert("localBackups", QJsonValue(m_settings.localBackups));
 	obj.insert("localBackupPath", QJsonValue(m_settings.localBackupPath));
 	obj.insert("localBackupInterval", QJsonValue(m_settings.localBackupInterval));
@@ -1120,7 +1071,6 @@ void MainWindow::saveSettings()
 	obj.insert("removableBackupVolume", QJsonValue(m_settings.removableBackupVolume));
 	obj.insert("removableBackupInterval", QJsonValue(m_settings.removableBackupInterval));
 	obj.insert("lastRemoveableBackup", QJsonValue(m_settings.lastRemoveableBackup.toString()));
-	obj.insert("lastUpdatePrompt", QJsonValue(m_settings.lastUpdatePrompt.toString()));
 	obj.insert("activeKeyboardLayout", QJsonValue(m_settings.activeKeyboardLayout));
 #ifndef Q_OS_MACOS
 	obj.insert("minimizeToTray", QJsonValue(m_settings.minimizeToTray));
@@ -1312,15 +1262,6 @@ void MainWindow::backupDatabasePromptDialogFinished(int rc)
 #endif
 }
 
-void MainWindow::settingsChanged()
-{
-	if (m_settings.browserPluginSupport) {
-		SignetApplication::get()->startWebsocketServer();
-	} else {
-		SignetApplication::get()->stopWebsocketServer();
-	}
-}
-
 void MainWindow::loadSettings()
 {
 	QString genericConfigPath = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
@@ -1346,13 +1287,6 @@ void MainWindow::loadSettings()
 		}
 	}
 	QJsonObject obj = doc.object();
-
-	QJsonValue browserPluginSupport = obj.value("browserPluginSupport");
-	if (browserPluginSupport.isBool()) {
-		m_settings.browserPluginSupport = browserPluginSupport.toBool();
-	} else {
-		m_settings.browserPluginSupport = true;
-	}
 
 	QJsonValue localBackups = obj.value("localBackups");
 	if (localBackups.isBool()) {
@@ -1402,13 +1336,6 @@ void MainWindow::loadSettings()
 		m_settings.lastRemoveableBackup = QDateTime::fromString(lastRemoveableBackup.toString());
 	} else {
 		m_settings.lastRemoveableBackup = QDateTime();
-	}
-
-	QJsonValue lastUpdatePrompt = obj.value("lastUpdatePrompt");
-	if (lastUpdatePrompt.isString()) {
-		m_settings.lastUpdatePrompt = QDateTime::fromString(lastUpdatePrompt.toString());
-	} else {
-		m_settings.lastUpdatePrompt = QDateTime();
 	}
 
 #ifdef Q_OS_MACOS
@@ -1496,29 +1423,6 @@ void MainWindow::loadSettings()
 		::signetdev_set_keymap(keyboardLayout.data(), keyboardLayout.size());
 	}
 
-	SignetApplication *app = SignetApplication::get();
-
-	QDateTime current = QDateTime::currentDateTime();
-	QDateTime release = QDateTime(app->getReleaseDate());
-	QDateTime prompt = m_settings.lastUpdatePrompt;
-
-	if ((release.daysTo(current) > app->releasePeriod()) &&
-		(!prompt.isValid() ||
-		 (prompt.daysTo(current) > 30))) {
-		QMessageBox *box = new QMessageBox(QMessageBox::Information, "Client update check",
-						   "This client is more than " + QString::number(app->releasePeriod()) + " days old. Check for a new version?",
-						   QMessageBox::No | QMessageBox::Yes,
-						   this);
-		int rc = box->exec();
-		m_settings.lastUpdatePrompt = current;
-		saveSettings();
-		box->deleteLater();
-		if (rc == QMessageBox::Yes) {
-			QUrl url("https://nthdimtech.com/signet/downloads");
-			QDesktopServices::openUrl(url);
-		}
-	}
-
 	if (!configFile.exists()) {
 		QMessageBox *box = new QMessageBox(QMessageBox::Information, "Machine not configured",
 						   "Would you like to configure Signet for this system now?\n\n"
@@ -1543,7 +1447,6 @@ void MainWindow::loadSettings()
 		saveSettings();
 	}
 
-	settingsChanged();
 	QLocale inputLocale = QApplication::inputMethod()->locale();
 	if ((inputLocale.language() != QLocale::English ||
 		 inputLocale.country() != QLocale::UnitedStates)
@@ -1591,7 +1494,6 @@ void MainWindow::applyKeyboardLayoutChanges()
 	m_settings.activeKeyboardLayout = QString("current");
 	m_settings.keyboardLayouts.insert("current", keyboardLayout);
 	saveSettings();
-	settingsChanged();
 }
 
 void MainWindow::keyboardLayoutTesterClosing(bool applyChanges)
@@ -1641,21 +1543,6 @@ void MainWindow::createFirmwareUpdateWidget()
 
 void MainWindow::enterDeviceState(int state)
 {
-	bool databaseFile = m_dbFilename.size();
-	if (databaseFile) {
-		m_changePasswordAction->setVisible(false);
-		m_backupAction->setVisible(false);
-		m_restoreAction->setVisible(false);
-		m_updateFirmwareAction->setVisible(false);
-		m_eraseDeviceAction->setVisible(false);
-		m_wipeDeviceAction->setVisible(false);
-		m_passwordSlots->setVisible(false);
-		m_importMenu->setDisabled(true);
-		m_deviceMenu->setTitle("&Database");
-	} else {
-		m_deviceMenu->setTitle("&Device");
-	}
-	m_closeAction->setDisabled(!databaseFile);
 	if (state == m_deviceState && (state != SignetApplication::STATE_LOGGED_OUT))
 		return;
 	switch (m_deviceState) {
@@ -1917,13 +1804,11 @@ void MainWindow::enterDeviceState(int state)
 		m_deviceMenu->setDisabled(false);
 		m_fileMenu->setDisabled(false);
 
-		if (!databaseFile) {
-			if (m_backupRestoreSupported) {
-				m_restoreAction->setVisible(true);
-			}
-			m_eraseDeviceAction->setVisible(true);
-			m_eraseDeviceAction->setText("Initialize");
+		if (m_backupRestoreSupported) {
+			m_restoreAction->setVisible(true);
 		}
+		m_eraseDeviceAction->setVisible(true);
+		m_eraseDeviceAction->setText("Initialize");
 
 		m_logoutAction->setDisabled(true);
 		m_backupAction->setVisible(false);
@@ -1965,19 +1850,17 @@ void MainWindow::enterDeviceState(int state)
 		int fwMaj, fwMin, fwStep;
 		SignetApplication::get()->getConnectedFirmwareVersion(fwMaj, fwMin, fwStep);
 
-		if (!databaseFile) {
-			if ((m_deviceType == SIGNETDEV_DEVICE_ORIGINAL) && fwMaj == 1 && fwMin == 2 && fwStep == 1) {
-				//Version 1.2.1 has a glitch that causes a lockup when starting
-				// a restore from the logged out state
-				m_restoreAction->setVisible(false);
-			} else if (m_backupRestoreSupported) {
-				m_restoreAction->setVisible(true);
-			}
-			m_wipeDeviceAction->setVisible(true);
-			m_changePasswordAction->setVisible(true);
-			m_eraseDeviceAction->setVisible(true);
-			m_eraseDeviceAction->setText("Reinitialize");
+		if ((m_deviceType == SIGNETDEV_DEVICE_ORIGINAL) && fwMaj == 1 && fwMin == 2 && fwStep == 1) {
+			//Version 1.2.1 has a glitch that causes a lockup when starting
+			// a restore from the logged out state
+			m_restoreAction->setVisible(false);
+		} else if (m_backupRestoreSupported) {
+			m_restoreAction->setVisible(true);
 		}
+		m_wipeDeviceAction->setVisible(true);
+		m_changePasswordAction->setVisible(true);
+		m_eraseDeviceAction->setVisible(true);
+		m_eraseDeviceAction->setText("Reinitialize");
 		m_passwordSlots->setVisible(false);
 		m_backupAction->setVisible(false);
 		m_logoutAction->setDisabled(true);
@@ -2000,22 +1883,20 @@ void MainWindow::enterDeviceState(int state)
 		m_eraseDeviceAction->setVisible(false);
 		m_loggedInStack->setCurrentIndex(0);
 
-		if (!databaseFile) {
-			if (m_backupRestoreSupported && !m_autoBackupCheckPerformed) {
-				m_autoBackupCheckPerformed = true;
-				autoBackupCheck();
-				m_backupAction->setVisible(true);
-			}
-			m_changePasswordAction->setVisible(true);
-			m_updateFirmwareAction->setVisible(true);
-			SignetApplication *app = SignetApplication::get();
-			int major;
-			int minor;
-			int step;
-			app->getConnectedFirmwareVersion(major, minor, step);
-			if (m_deviceType == SIGNETDEV_DEVICE_ORIGINAL && major == 1 && ((minor > 3) || (minor == 3 && step >= 2))) {
-				m_passwordSlots->setVisible(true);
-			}
+		if (m_backupRestoreSupported && !m_autoBackupCheckPerformed) {
+			m_autoBackupCheckPerformed = true;
+			autoBackupCheck();
+			m_backupAction->setVisible(true);
+		}
+		m_changePasswordAction->setVisible(true);
+		m_updateFirmwareAction->setVisible(true);
+		SignetApplication *app = SignetApplication::get();
+		int major;
+		int minor;
+		int step;
+		app->getConnectedFirmwareVersion(major, minor, step);
+		if (m_deviceType == SIGNETDEV_DEVICE_ORIGINAL && major == 1 && ((minor > 3) || (minor == 3 && step >= 2))) {
+			m_passwordSlots->setVisible(true);
 		}
 	}
 	break;
@@ -2030,78 +1911,12 @@ void MainWindow::enterDeviceState(int state)
 	bool fileActionsEnabled = (m_deviceState == SignetApplication::STATE_LOGGED_IN);
 	m_exportMenu->menuAction()->setVisible(fileActionsEnabled);
 	m_settingsAction->setVisible(fileActionsEnabled);
-	m_importMenu->setDisabled(databaseFile || m_deviceState == SignetApplication::STATE_BOOTLOADER);
+	m_importMenu->setDisabled(m_deviceState == SignetApplication::STATE_BOOTLOADER);
 	m_importKeePassAction->setEnabled(fileActionsEnabled);
 #ifdef Q_OS_UNIX
 	m_importPassAction->setEnabled(fileActionsEnabled && m_passDatabaseFound);
 #endif
 	m_importCSVAction->setEnabled(fileActionsEnabled);
-}
-
-void MainWindow::openUi()
-{
-	QFileDialog *fd = new QFileDialog(this);
-	QStringList filters;
-	fd->setOption(QFileDialog::DontUseNativeDialog, true);
-	fd->setDirectory(m_settings.localBackupPath);
-
-	QDir backupPath(m_settings.localBackupPath);
-	if (backupPath.exists()) {
-		QStringList nameFilters;
-		nameFilters.push_back(backupFilter());
-		QFileInfoList files = backupPath.entryInfoList(nameFilters, QDir::Files, QDir::Time);
-		if (files.size()) {
-			fd->selectFile(files.first().fileName());
-		}
-	}
-	filters.append(backupFilter());
-	filters.append("*");
-	fd->setNameFilters(filters);
-	fd->setFileMode(QFileDialog::AnyFile);
-	fd->setAcceptMode(QFileDialog::AcceptOpen);
-	m_openFileDialog = fd;
-	connect(m_openFileDialog, SIGNAL(finished(int)), this, SLOT(openFileDialogFinished(int)));
-	m_openFileDialog->show();
-}
-
-void MainWindow::openFileDialogFinished(int rc)
-{
-	QFileDialog *fd = m_openFileDialog;
-	m_openFileDialog->deleteLater();
-	m_openFileDialog = nullptr;
-	if (!rc)
-		return;
-	QStringList sl = fd->selectedFiles();
-	if (sl.empty()) {
-		return;
-	}
-	QString fn = sl.first();
-	if (signetdev_emulate_init(fn.toLatin1().data())) {
-		m_dbFilename = fn;
-		::signetdev_close_connection();
-		if (::signetdev_emulate_begin()) {
-			enterDeviceState(SignetApplication::STATE_NEVER_SHOWN);
-			enterDeviceState(SignetApplication::STATE_CONNECTING);
-			::signetdev_startup(nullptr, &m_signetdevCmdToken);
-		}
-	} else {
-		SignetApplication::messageBoxError(QMessageBox::Warning, "Open", "Database file not valid", this);
-	}
-}
-
-void MainWindow::closeUi()
-{
-	if (m_dbFilename.size()) {
-		::signetdev_emulate_end();
-		m_dbFilename.clear();
-		enterDeviceState(SignetApplication::STATE_NEVER_SHOWN);
-		enterDeviceState(SignetApplication::STATE_CONNECTING);
-		m_deviceType = signetdev_open_connection();
-		SignetApplication::get()->setDeviceType(m_deviceType);
-		if (m_deviceType != SIGNETDEV_DEVICE_NONE) {
-			::signetdev_startup(nullptr, &m_signetdevCmdToken);
-		}
-	}
 }
 
 void MainWindow::openSettingsUi()
@@ -2117,7 +1932,6 @@ void MainWindow::settingDialogFinished(int rc)
 {
 	if (!rc) {
 		saveSettings();
-		settingsChanged();
 	}
 }
 

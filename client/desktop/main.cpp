@@ -56,11 +56,7 @@ int main(int argc, char **argv)
 		box->deleteLater();
 	}
 
-	QString dbFile;
-
 	QCommandLineParser parser;
-	QCommandLineOption file("file", "Read database from specified file", "file-name");
-	parser.addOption(file);
 	parser.addHelpOption();
 #ifdef Q_OS_UNIX
 	QCommandLineOption startInTrayOption("start-in-systray", "Start application minimized in the system tray");
@@ -73,13 +69,10 @@ int main(int argc, char **argv)
 #else
 	bool startInTray = false;
 #endif
-	if (parser.isSet(file)) {
-		dbFile = parser.value(file);
-	}
 
 	app->setQuitOnLastWindowClosed(false);
 
-	app->init(startInTray, dbFile);
+	app->init(startInTray);
 	app->exec();
 
 	signetdev_deinitialize_api();

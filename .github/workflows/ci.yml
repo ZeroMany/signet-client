@@ -59,8 +59,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y qtbase5-dev qt5-qmake libqt5svg5-dev \
-            libqt5websockets5-dev libqt5x11extras5-dev libgcrypt20-dev \
-            zlib1g-dev libx11-dev
+            libqt5x11extras5-dev libgcrypt20-dev zlib1g-dev libx11-dev
       - name: Build
         run: |
           qmake client/client.pro CONFIG+=release
