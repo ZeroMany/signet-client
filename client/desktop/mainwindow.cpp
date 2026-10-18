@@ -81,15 +81,6 @@ extern "C" {
 
 #define SIGNET_BACKUP_EXTENSION "sdb"
 #define SIGNET_HC_BACKUP_EXTENSION "sdbhc"
-#define SIGNET_FIRMWARE_SUFFIX "sfw"
-#define SIGNET_HC_FIRMWARE_SUFFIX "sfwhc"
-
-bool MainWindow::uninitializedFirmwareUpdateSupported()
-{
-	int major, minor, step;
-	SignetApplication::get()->getConnectedFirmwareVersion(major, minor, step);
-	return (m_deviceType == SIGNETDEV_DEVICE_HC) && ((major > 0) || (minor > 1) || (step >=3));
-}
 
 bool MainWindow::uninitializedWipeSupported()
 {
@@ -129,9 +120,6 @@ MainWindow::MainWindow(QWidget *parent) :
 	m_changePasswordAction(nullptr),
 	m_signetdevCmdToken(-1),
 	m_startedExport(false),
-	m_NewFirmwareHeader(nullptr),
-	m_NewFirmwareBody(nullptr),
-	m_fwUpgradeState(0),
 	m_deviceType(SIGNETDEV_DEVICE_NONE),
 	m_autoBackupCheckPerformed(false)
 {
@@ -240,10 +228,6 @@ MainWindow::MainWindow(QWidget *parent) :
 	m_wipeDeviceAction = m_deviceMenu->addAction("Wipe");
 	QObject::connect(m_wipeDeviceAction, SIGNAL(triggered(bool)),
 			 this, SLOT(wipeDeviceUi()));
-
-	m_updateFirmwareAction = m_deviceMenu->addAction("Update &firmware");
-	QObject::connect(m_updateFirmwareAction, SIGNAL(triggered(bool)),
-			 this, SLOT(updateFirmwareUi()));
 
 	QMenu *helpMenu = bar->addMenu("&Help");
 
@@ -364,62 +348,6 @@ void MainWindow::signetdevGetProgressResp(signetdevCmdRespInfo info, signetdev_g
 			abort();
 			return;
 		}
-	} else if (m_deviceState == SignetApplication::STATE_UPDATING_FIRMWARE) {
-		switch (resp_code) {
-		case OKAY:
-			m_firmwareUpdateProgress->setRange(0, data.total_progress_maximum);
-			m_firmwareUpdateProgress->setValue(data.total_progress);
-			m_firmwareUpdateProgress->update();
-			::signetdev_get_progress(nullptr, &m_signetdevCmdToken, data.total_progress, DS_ERASING_PAGES);
-			break;
-		case INVALID_STATE: {
-			m_totalWritten = 0;
-			QString updatingString;
-
-			if (m_deviceType == SIGNETDEV_DEVICE_HC) {
-				SignetApplication *app = SignetApplication::get();
-				auto bootMode = app->getBootMode();
-
-				switch (bootMode) {
-				case HC_BOOT_BOOTLOADER_MODE:
-					updatingString = "Writing second stage firmware...";
-					break;
-				case HC_BOOT_APPLICATION_MODE:
-					updatingString = "Writing first stage firmware...";
-					break;
-				default:
-					abort();
-					break;
-				}
-				m_writingAddr = 0;
-				int firmwareSize = firmwareSizeHC();
-				m_firmwareUpdateProgress->setRange(0, firmwareSize);
-				m_firmwareUpdateProgress->setValue(0);
-				sendFirmwareWriteCmdHC();
-			} else {
-				int total_bytes = 0;
-
-				for (auto a = m_fwSections.begin(); a != m_fwSections.end(); a++) {
-					total_bytes += a->size;
-				}
-				m_firmwareUpdateProgress->setRange(0, total_bytes);
-				m_firmwareUpdateProgress->setValue(0);
-
-				m_writingSectionIter = m_fwSections.begin();
-				m_writingAddr = m_writingSectionIter->lma;
-				sendFirmwareWriteCmd();
-				updatingString = "Writing firmware...";
-			}
-			m_firmwareUpdateStage->setText(updatingString);
-		}
-		break;
-		case SIGNET_ERROR_DISCONNECT:
-		case SIGNET_ERROR_QUIT:
-			return;
-		default:
-			abort();
-			return;
-		}
 	}
 }
 
@@ -502,53 +430,6 @@ void MainWindow::signetdevCmdResp(signetdevCmdRespInfo info)
 	case SIGNETDEV_CMD_DISCONNECT:
 		enterDeviceState(SignetApplication::STATE_DISCONNECTED);
 		emit close();
-		break;
-	case SIGNETDEV_CMD_ERASE_PAGES:
-		if (code == OKAY) {
-			::signetdev_get_progress(nullptr, &m_signetdevCmdToken, 0, DS_ERASING_PAGES);
-		}
-		break;
-	case SIGNETDEV_CMD_WRITE_FLASH:
-		if (code == OKAY) {
-			m_totalWritten += m_writingSize;
-			m_firmwareUpdateProgress->setValue(m_totalWritten);
-			m_firmwareUpdateProgress->update();
-			if (m_deviceType == SIGNETDEV_DEVICE_HC) {
-				if (m_totalWritten >= firmwareSizeHC()) {
-					SignetApplication *app = SignetApplication::get();
-					auto bootMode = app->getBootMode();
-					bool needReset = false;
-					switch (bootMode) {
-					case HC_BOOT_BOOTLOADER_MODE:
-						m_fwUpgradeState &= ~HC_UPGRADING_APPLICATION_MASK;
-						m_fwUpgradeState |= HC_UPGRADED_APPLICATION_MASK;
-						needReset = true;
-						break;
-					case HC_BOOT_APPLICATION_MODE:
-						m_fwUpgradeState &= ~HC_UPGRADING_BOOTLOADER_MASK;
-						m_fwUpgradeState |= HC_UPGRADED_BOOTLOADER_MASK;
-						needReset = (m_fwUpgradeState & HC_UPGRADED_APPLICATION_MASK) == 0;
-						break;
-					default:
-						//TODO
-						break;
-					}
-					if (needReset) {
-						::signetdev_switch_boot_mode(nullptr, &m_signetdevCmdToken);
-					}
-				} else {
-					sendFirmwareWriteCmdHC();
-				}
-			} else {
-				if (m_writingSectionIter == m_fwSections.end()) {
-					::signetdev_reset_device(nullptr, &m_signetdevCmdToken);
-				} else {
-					sendFirmwareWriteCmd();
-				}
-			}
-		} else {
-			m_totalWritten++;
-		}
 		break;
 	case SIGNETDEV_CMD_WRITE_BLOCK:
 		if (code == OKAY) {
@@ -634,43 +515,6 @@ void MainWindow::signetdevCmdResp(signetdevCmdRespInfo info)
 			enterDeviceState(SignetApplication::STATE_WIPING);
 		}
 		break;
-	case SIGNETDEV_CMD_BEGIN_UPDATE_FIRMWARE: {
-		endButtonWait();
-		if (code == OKAY) {
-			enterDeviceState(SignetApplication::STATE_UPDATING_FIRMWARE);
-		} else if (code == DEVICE_NOT_WIPED && uninitializedFirmwareUpdateSupported()) {
-			QMessageBox *box = SignetApplication::messageBoxError(QMessageBox::Critical, "Update firmware", "Device not wiped yet. Wipe device and try again", this);
-			connect(box, SIGNAL(finished(int)), this, SLOT(restoreError()));
-		}
-	}
-	break;
-	case SIGNETDEV_CMD_RESET_DEVICE: {
-		if (code == OKAY) {
-			m_firmwareUpdateStage->setText("Resetting device...");
-			m_firmwareUpdateProgress->hide();
-			::signetdev_close_connection();
-			m_resetTimer.setSingleShot(true);
-			m_resetTimer.setInterval(500);
-			m_resetTimer.start();
-		}
-	} break;
-	case SIGNETDEV_CMD_SWITCH_BOOT_MODE: {
-		if (code == OKAY) {
-			m_firmwareUpdateStage->setText("Resetting device...");
-			m_firmwareUpdateProgress->hide();
-			::signetdev_close_connection();
-			m_resetTimer.setSingleShot(true);
-			m_resetTimer.setInterval(500);
-			m_resetTimer.start();
-		} else if (code == INVALID_STATE) {
-			m_firmwareUpdateStage->setText("CRC validation failed");
-			m_firmwareUpdateProgress->hide();
-		} else if (code > 0){
-			m_firmwareUpdateStage->setText("Firmare upgrade failed");
-			m_firmwareUpdateProgress->hide();
-		}
-	}
-	break;
 	}
 	if (do_abort) {
 		abort();
@@ -816,24 +660,6 @@ void MainWindow::signetdevReadAllUIdsResp(signetdevCmdRespInfo info, int id, QBy
 	}
 }
 
-void MainWindow::firmwareUpgradeCompletionCheck()
-{
-	SignetApplication *app = SignetApplication::get();
-	if (m_fwUpgradeState & HC_UPGRADED_APPLICATION_MASK) {
-		auto box = app->messageBoxError(QMessageBox::Information, "Firmware upgraded",
-										"The firmware has been upgraded to version " + QString::number(m_NewFirmwareHeader->fw_version.major)
-										+ "." + QString::number(m_NewFirmwareHeader->fw_version.minor)
-										+ "." + QString::number(m_NewFirmwareHeader->fw_version.step),
-										this);
-		m_fwUpgradeState = 0;
-		delete m_NewFirmwareBody;
-		delete m_NewFirmwareHeader;
-		m_NewFirmwareBody = nullptr;
-		m_NewFirmwareHeader = nullptr;
-		box->exec();
-	}
-}
-
 void MainWindow::signetdevStartupResp(signetdevCmdRespInfo info, signetdev_startup_resp_data resp)
 {
 	if (info.token != m_signetdevCmdToken) {
@@ -891,24 +717,17 @@ void MainWindow::signetdevStartupResp(signetdevCmdRespInfo info, signetdev_start
 	switch (code) {
 	case UNKNOWN_DB_FORMAT:
 		enterDeviceState(SignetApplication::STATE_UNINITIALIZED);
-		firmwareUpgradeCompletionCheck();
 		break;
 	case OKAY:
 		switch (device_state) {
 		case DS_LOGGED_OUT:
 			enterDeviceState(SignetApplication::STATE_LOGGED_OUT);
-			firmwareUpgradeCompletionCheck();
 			break;
 		case DS_UNINITIALIZED:
 			enterDeviceState(SignetApplication::STATE_UNINITIALIZED);
-			firmwareUpgradeCompletionCheck();
 			break;
 		case DS_BOOTLOADER:
-			if (m_NewFirmwareBody && m_NewFirmwareHeader) {
-				updateFirmwareHCIter(false);
-			} else {
-				enterDeviceState(SignetApplication::STATE_BOOTLOADER);
-			}
+			enterDeviceState(SignetApplication::STATE_BOOTLOADER);
 			break;
 		}
 		break;
@@ -1511,36 +1330,6 @@ void MainWindow::setCentralStack(QWidget *w)
 	setCentralWidget(stack);
 }
 
-void MainWindow::createFirmwareUpdateWidget()
-{
-	m_firmwareUpdateWidget = new QWidget();
-	QBoxLayout *layout = new QBoxLayout(QBoxLayout::TopToBottom);
-	layout->setAlignment(Qt::AlignTop);
-	m_firmwareUpdateProgress = new QProgressBar();
-	if (m_deviceType == SIGNETDEV_DEVICE_HC) {
-		SignetApplication *app =  SignetApplication::get();
-		QString progressTitle;
-		auto btMode = app->getBootMode();
-		switch (btMode) {
-		case HC_BOOT_BOOTLOADER_MODE:
-			progressTitle = QString("Preparing to write second stage firmware...");
-			break;
-		case HC_BOOT_APPLICATION_MODE:
-			progressTitle = QString("Preparing to write first stage firmware...");
-			break;
-		default:
-			//TODO
-			break;
-		}
-		m_firmwareUpdateStage = new genericText(progressTitle);
-	} else {
-		m_firmwareUpdateStage = new processingText("Erasing firmware pages...");
-	}
-	layout->addWidget(m_firmwareUpdateStage);
-	layout->addWidget(m_firmwareUpdateProgress);
-	m_firmwareUpdateWidget->setLayout(layout);
-}
-
 void MainWindow::enterDeviceState(int state)
 {
 	if (state == m_deviceState && (state != SignetApplication::STATE_LOGGED_OUT))
@@ -1596,18 +1385,14 @@ void MainWindow::enterDeviceState(int state)
 		QWidget *connecting_widget = new QWidget();
 		QBoxLayout *layout = new QBoxLayout(QBoxLayout::TopToBottom);
 		layout->setAlignment(Qt::AlignTop);
-		if (m_wasConnected && !m_fwUpgradeState) {
+		if (m_wasConnected) {
 			m_connectingLabel = new genericText("No Signet device detected.\n\nPlease insert device.");
 			m_wasConnected = false;
 		} else {
-			if (m_fwUpgradeState) {
-				m_connectingLabel = new processingText("Waiting for device...");
-			} else {
-				m_connectingLabel = new processingText("Searching for device...");
-				m_connectingTimer.setSingleShot(true);
-				m_connectingTimer.setInterval(2000);
-				m_connectingTimer.start();
-			}
+			m_connectingLabel = new processingText("Searching for device...");
+			m_connectingTimer.setSingleShot(true);
+			m_connectingTimer.setInterval(2000);
+			m_connectingTimer.start();
 		}
 
 		layout->addWidget(m_connectingLabel);
@@ -1723,57 +1508,6 @@ void MainWindow::enterDeviceState(int state)
 		setCentralStack(m_restoreWidget);
 	}
 	break;
-	case SignetApplication::STATE_UPDATING_FIRMWARE: {
-		SignetApplication *app = SignetApplication::get();
-		auto bootMode = app->getBootMode();
-		switch (bootMode) {
-		case HC_BOOT_BOOTLOADER_MODE:
-			m_fwUpgradeState |= HC_UPGRADING_APPLICATION_MASK;
-			break;
-		case HC_BOOT_APPLICATION_MODE:
-			m_fwUpgradeState |= HC_UPGRADING_BOOTLOADER_MASK;
-			break;
-		default:
-			//TODO
-			break;
-		}
-		createFirmwareUpdateWidget();
-
-		m_deviceMenu->setDisabled(true);
-		m_fileMenu->setDisabled(true);
-		if (m_deviceType == SIGNETDEV_DEVICE_HC) {
-			::signetdev_erase_pages_hc(nullptr, &m_signetdevCmdToken);
-		} else {
-			QByteArray erase_pages_;
-			QByteArray page_mask(512, 0);
-
-			for (auto iter = m_fwSections.begin(); iter != m_fwSections.end(); iter++) {
-				const fwSection &section = (*iter);
-				unsigned int lma = section.lma;
-				unsigned int lma_end = lma + section.size;
-				int page_begin = (lma - 0x8000000)/2048;
-				int page_end = (lma_end - 1 - 0x8000000)/2048;
-				for (int i  = page_begin; i <= page_end; i++) {
-					if (i < 0)
-						continue;
-					if (i >= 511)
-						continue;
-					page_mask[i] = 1;
-				}
-			}
-
-			for (int i = 0; i < 512; i++) {
-				if (page_mask[i]) {
-					erase_pages_.push_back(i);
-				}
-			}
-			::signetdev_erase_pages(nullptr, &m_signetdevCmdToken,
-						erase_pages_.size(),
-						(u8 *)erase_pages_.data());
-		}
-		setCentralStack(m_firmwareUpdateWidget);
-	}
-	break;
 	case SignetApplication::STATE_BOOTLOADER: {
 		SignetApplication *app = SignetApplication::get();
 		QIcon warn = app->style()->standardIcon(QStyle::SP_MessageBoxWarning);
@@ -1783,19 +1517,18 @@ void MainWindow::enterDeviceState(int state)
 		m_fileMenu->setDisabled(false);
 		QVBoxLayout *layout = new QVBoxLayout();
 		layout->setAlignment(Qt::AlignTop);
-		QPushButton *upgradeButton = new QPushButton("Upgrade firmware");
 		QLabel *warningImage = new QLabel();
 		warningImage->setPixmap(warn.pixmap(64, 64));
 		warningImage->setAlignment(Qt::AlignHCenter);
-		QLabel *failureMessage = new emphasisLargeText("Firmware upgrade incomplete");
+		QLabel *failureMessage = new emphasisLargeText("Device is in firmware update mode");
 		failureMessage->setAlignment(Qt::AlignHCenter);
-		QLabel *instructionMessage = new genericText("Click below to complete the upgrade and access your device.");
+		QLabel *instructionMessage = new genericText("A firmware update was started but not finished.\n"
+												 "This version of the Signet app cannot update firmware.\n"
+												 "To finish it, use the original Signet app (version 0.9.17.1).");
 		instructionMessage->setAlignment(Qt::AlignHCenter);
 		layout->addWidget(warningImage);
 		layout->addWidget(failureMessage);
 		layout->addWidget(instructionMessage);
-		layout->addWidget(upgradeButton);
-		connect(upgradeButton, SIGNAL(pressed()), this, SLOT(updateFirmwareUi()));
 		bootloaderWidget->setLayout(layout);
 		setCentralStack(bootloaderWidget);
 	} break;
@@ -1818,11 +1551,6 @@ void MainWindow::enterDeviceState(int state)
 			m_wipeDeviceAction->setVisible(false);
 		}
 
-		if (uninitializedFirmwareUpdateSupported()) {
-			m_updateFirmwareAction->setVisible(true);
-		} else {
-			m_updateFirmwareAction->setVisible(false);
-		}
 		m_changePasswordAction->setVisible(false);
 		m_passwordSlots->setVisible(false);
 
@@ -1864,7 +1592,6 @@ void MainWindow::enterDeviceState(int state)
 		m_passwordSlots->setVisible(false);
 		m_backupAction->setVisible(false);
 		m_logoutAction->setDisabled(true);
-		m_updateFirmwareAction->setVisible(false);
 
 		LoginWindow *login_window = new LoginWindow(this);
 		connect(login_window, SIGNAL(enterDeviceState(int)),
@@ -1889,7 +1616,6 @@ void MainWindow::enterDeviceState(int state)
 			m_backupAction->setVisible(true);
 		}
 		m_changePasswordAction->setVisible(true);
-		m_updateFirmwareAction->setVisible(true);
 		SignetApplication *app = SignetApplication::get();
 		int major;
 		int minor;
@@ -1965,259 +1691,6 @@ void MainWindow::resetTimer()
 	SignetApplication::get()->setDeviceType(m_deviceType);
 	if (m_deviceType != SIGNETDEV_DEVICE_NONE) {
 		::signetdev_startup(nullptr, &m_signetdevCmdToken);
-	}
-}
-
-int MainWindow::firmwareSizeHC()
-{
-	auto app = SignetApplication::get();
-	int bootImageSz = 0;
-	switch (app->getBootMode()) {
-	case HC_BOOT_BOOTLOADER_MODE:
-		bootImageSz = HC_BOOT_AREA_B_LEN;
-		break;
-	case HC_BOOT_APPLICATION_MODE:
-		bootImageSz = HC_BOOT_AREA_A_LEN;
-		break;
-	default:
-		break;
-	}
-	return bootImageSz;
-}
-
-void MainWindow::sendFirmwareWriteCmdHC()
-{
-	auto app = SignetApplication::get();
-	unsigned int write_size = 512;
-	const u8 *data = nullptr;
-	switch (app->getBootMode()) {
-	case HC_BOOT_BOOTLOADER_MODE:
-		data = m_NewFirmwareBody->firmware_B + m_writingAddr;
-		break;
-	case HC_BOOT_APPLICATION_MODE:
-		data = m_NewFirmwareBody->firmware_A + m_writingAddr;
-		break;
-	default:
-		return;
-	}
-	::signetdev_write_flash(nullptr, &m_signetdevCmdToken, m_writingAddr, data, write_size);
-	m_writingAddr += write_size;
-	m_writingSize = write_size;
-}
-
-void MainWindow::sendFirmwareWriteCmd()
-{
-	bool advance = false;
-	unsigned int section_lma = m_writingSectionIter->lma;
-	int section_size = m_writingSectionIter->size;
-	unsigned int section_end = section_lma + section_size;
-	unsigned int write_size = 1024;
-	if ((m_writingAddr + write_size) >= section_end) {
-		write_size = section_end - m_writingAddr;
-		advance = true;
-	}
-	void *data = m_writingSectionIter->contents.data() + (m_writingAddr - section_lma);
-
-	::signetdev_write_flash(nullptr, &m_signetdevCmdToken, m_writingAddr, data, write_size);
-	if (advance) {
-		m_writingSectionIter++;
-		if (m_writingSectionIter != m_fwSections.end()) {
-			m_writingAddr = m_writingSectionIter->lma;
-		}
-	} else {
-		m_writingAddr += write_size;
-	}
-	m_writingSize = write_size;
-}
-
-void MainWindow::firmwareFileInvalidMsg()
-{
-	SignetApplication::messageBoxError(QMessageBox::Warning, "Update firmware", "Firmware file not valid", this);
-}
-
-void MainWindow::updateFirmwareHC(QByteArray &datum)
-{
-	if (datum.size() < sizeof(struct hc_firmware_file_header)) {
-		firmwareFileInvalidMsg();
-		return;
-	}
-	struct hc_firmware_file_header *header = (struct hc_firmware_file_header *)datum.data();
-	if (header->file_prefix != HC_FIRMWARE_FILE_PREFIX) {
-		firmwareFileInvalidMsg();
-		return;
-	}
-	if (header->file_version != HC_FIRMWARE_FILE_VERSION) {
-		firmwareFileInvalidMsg();
-		return;
-	}
-	if (header->header_size <  sizeof (struct hc_firmware_file_header)) {
-		firmwareFileInvalidMsg();
-		return;
-	}
-	int expected_sz = header->A_len + header->B_len + header->header_size;
-	if (datum.size() < expected_sz) {
-		firmwareFileInvalidMsg();
-		return;
-	}
-
-	m_NewFirmwareHeader = new (struct hc_firmware_file_header);
-	m_NewFirmwareBody = new (struct hc_firmware_file_body);
-
-	memcpy(m_NewFirmwareHeader, datum.data(), sizeof (*m_NewFirmwareHeader));
-	memcpy(m_NewFirmwareBody, datum.data() + header->header_size, sizeof (*m_NewFirmwareBody));
-
-	u32 A_crc = crc32(0, m_NewFirmwareBody->firmware_A, sizeof(m_NewFirmwareBody->firmware_A));
-	u32 B_crc = crc32(0, m_NewFirmwareBody->firmware_B, sizeof(m_NewFirmwareBody->firmware_B));
-	if (A_crc != m_NewFirmwareHeader->A_crc || B_crc != m_NewFirmwareHeader->B_crc) {
-		delete m_NewFirmwareBody;
-		delete m_NewFirmwareHeader;
-		m_NewFirmwareBody = nullptr;
-		m_NewFirmwareHeader = nullptr;
-		firmwareFileInvalidMsg();
-		return;
-	}
-	updateFirmwareHCIter(true);
-}
-
-void MainWindow::updateFirmwareHCIter(bool buttonWait)
-{
-	SignetApplication *app = SignetApplication::get();
-
-	struct hc_firmware_info info;
-
-	auto bt_mode = app->getBootMode();
-	switch (bt_mode) {
-	case HC_BOOT_BOOTLOADER_MODE:
-		info.firmware_crc = m_NewFirmwareHeader->B_crc;
-		info.firmware_len = m_NewFirmwareHeader->B_len;
-		memcpy(info.firmware_signature, m_NewFirmwareHeader->B_signature, sizeof (info.firmware_signature));
-		break;
-	case HC_BOOT_APPLICATION_MODE:
-		info.firmware_crc = m_NewFirmwareHeader->A_crc;
-		info.firmware_len = m_NewFirmwareHeader->A_len;
-		memcpy(info.firmware_signature, m_NewFirmwareHeader->A_signature, sizeof (info.firmware_signature));
-		break;
-	default:
-		return;
-	}
-	memcpy(info.firmware_signature_pubkey, m_NewFirmwareHeader->signature_pubkey, sizeof(info.firmware_signature_pubkey));
-
-	if (buttonWait) {
-		beginButtonWait("Update firmware", true);
-	}
-	::signetdev_begin_update_firmware_hc(nullptr, &m_signetdevCmdToken, &info);
-}
-
-void MainWindow::updateFirmware(QByteArray &datum)
-{
-	QJsonDocument doc = QJsonDocument::fromJson(datum);
-
-	bool valid_fw = !doc.isNull() && doc.isObject();
-
-	QJsonObject doc_obj;
-	QJsonObject sections_obj;
-	m_fwSections.clear();
-
-	if (valid_fw) {
-		doc_obj = doc.object();
-		QJsonValue temp_val = doc_obj.value("sections");
-		valid_fw = (temp_val != QJsonValue::Undefined) && temp_val.isObject();
-		if (valid_fw) {
-			sections_obj = temp_val.toObject();
-		}
-	}
-
-	if (valid_fw) {
-		for (auto iter = sections_obj.constBegin(); iter != sections_obj.constEnd() && valid_fw; iter++) {
-			fwSection section;
-			section.name = iter.key();
-			QJsonValue temp = iter.value();
-			if (!temp.isObject()) {
-				valid_fw = false;
-				break;
-			}
-
-			QJsonObject section_obj = temp.toObject();
-			QJsonValue lma_val = section_obj.value("lma");
-			QJsonValue size_val = section_obj.value("size");
-			QJsonValue contents_val = section_obj.value("contents");
-
-			if (lma_val == QJsonValue::Undefined ||
-				size_val == QJsonValue::Undefined ||
-				contents_val == QJsonValue::Undefined ||
-				!lma_val.isDouble() ||
-				!size_val.isDouble() ||
-				!contents_val.isString()) {
-				valid_fw = false;
-				break;
-			}
-			section.lma = static_cast<unsigned int>(lma_val.toDouble());
-			section.size = static_cast<int>(size_val.toDouble());
-			section.contents = QByteArray::fromBase64(contents_val.toString().toLatin1());
-			if (section.contents.size() != section.size) {
-				valid_fw = false;
-				break;
-			}
-			m_fwSections.append(section);
-		}
-	}
-	if (valid_fw) {
-		beginButtonWait("Update firmware", true);
-		::signetdev_begin_update_firmware(nullptr, &m_signetdevCmdToken);
-	} else {
-		firmwareFileInvalidMsg();
-	}
-}
-
-QString MainWindow::firmwareSuffix()
-{
-	if (m_deviceType == SIGNETDEV_DEVICE_HC) {
-		return QString(SIGNET_HC_FIRMWARE_SUFFIX);
-	} else {
-		return QString(SIGNET_FIRMWARE_SUFFIX);
-	}
-}
-
-QString MainWindow::firmwareFilter()
-{
-	return "*." + firmwareSuffix();
-}
-
-void MainWindow::updateFirmwareUi()
-{
-	QFileDialog *fd = new QFileDialog(this);
-	QStringList filters;
-	QString downloadsFolder = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
-
-	filters.append(firmwareFilter());
-	filters.append("*");
-	fd->setNameFilters(filters);
-	fd->setDirectory(downloadsFolder);
-	fd->setFileMode(QFileDialog::AnyFile);
-	fd->setAcceptMode(QFileDialog::AcceptOpen);
-	if (!fd->exec())
-		return;
-	QStringList sl = fd->selectedFiles();
-	if (sl.empty()) {
-		fd->deleteLater();
-		return;
-	}
-
-	QFile firmware_update_file(sl.first());
-	fd->deleteLater();
-	bool result = firmware_update_file.open(QFile::ReadWrite);
-	if (!result) {
-		firmware_update_file.close();
-		SignetApplication::messageBoxError(QMessageBox::Warning, "Update firmware", "Failed to open firmware file", this);
-		return;
-	}
-
-	QByteArray datum = firmware_update_file.readAll();
-	firmware_update_file.close();
-	if (m_deviceType == SIGNETDEV_DEVICE_HC) {
-		updateFirmwareHC(datum);
-	} else {
-		updateFirmware(datum);
 	}
 }
 
