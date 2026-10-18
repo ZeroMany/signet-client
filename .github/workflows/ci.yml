@@ -1,12 +1,16 @@
-# Builds the Signet client for Windows and Linux on every push and pull
-# request. The finished programs appear under "Artifacts" on the run's page
-# (GitHub -> Actions tab -> pick a run).
-name: Build
+# Builds the Signet client for Windows and Linux for every pull request and
+# every change to main. The finished programs appear under "Artifacts" on
+# the run's page (GitHub -> Actions tab -> pick a run).
+name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   windows:

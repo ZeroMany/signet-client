@@ -1,7 +1,7 @@
 ### Automatic builds
 
-Every push to GitHub builds the app for Windows and Linux (see
-`.github/workflows/build.yml`). To download a build, open the repository on
+Every pull request and every change to `main` builds the app for Windows
+and Linux (see `.github/workflows/ci.yml`). To download a build, open the repository on
 GitHub, click **Actions**, pick a run, and download the file listed under
 **Artifacts**.
 
