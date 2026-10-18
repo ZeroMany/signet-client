@@ -28,6 +28,8 @@ jobs:
             mingw-w64-x86_64-qt5-static
             mingw-w64-x86_64-zlib
             mingw-w64-x86_64-libgcrypt
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-zstd
       - name: Build
         run: |
           export PATH=/mingw64/qt5-static/bin:$PATH
