@@ -1,0 +1,17 @@
+# Dependabot opens pull requests when something this project depends on has
+# a newer version. Each pull request is built by CI before it is merged.
+version: 2
+updates:
+  # The building blocks used by .github/workflows/ci.yml
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    target-branch: main
+
+  # The code pulled in from other repositories (signet-base, keepassx, qtcsv)
+  - package-ecosystem: gitsubmodule
+    directory: /
+    schedule:
+      interval: monthly
+    target-branch: main
