@@ -1,0 +1,73 @@
+# Builds the Signet client for Windows and Linux for every pull request and
+# every change to main. The finished programs appear under "Artifacts" on
+# the run's page (GitHub -> Actions tab -> pick a run).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same pull request cancels the older, unfinished build.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-qt5-static
+            mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-libgcrypt
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-zstd
+      - name: Build
+        run: |
+          export PATH=/mingw64/qt5-static/bin:$PATH
+          qmake client/client.pro CONFIG+=release
+          mingw32-make -j4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signet-windows
+          path: release/signet.exe
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qtbase5-dev qt5-qmake libqt5svg5-dev \
+            libqt5websockets5-dev libqt5x11extras5-dev libgcrypt20-dev \
+            zlib1g-dev libx11-dev
+      - name: Build
+        run: |
+          qmake client/client.pro CONFIG+=release
+          make -j4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signet-linux
+          path: |
+            signet
+            signet-base/signetdev/host/linux/50-signet.rules

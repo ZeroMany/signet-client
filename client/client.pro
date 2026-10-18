@@ -23,6 +23,9 @@ QT += x11extras
 TARGET = signet
 TEMPLATE = app
 QMAKE_CFLAGS += -std=c99
+# The signet-base C code relies on "common" global variables, which newer
+# compilers (GCC 10+) reject by default.
+QMAKE_CFLAGS += -fcommon
 QMAKE_CXXFLAGS += -std=c++11 -DQTCSV_STATIC_LIB
 DISTFILES += client.astylerc
 
