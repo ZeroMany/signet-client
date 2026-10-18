@@ -50,13 +50,6 @@ class DatabaseImportController;
 class DatabaseImporter;
 class LoggedInWidget;
 class QFileDialog;
-struct fwSection {
-	QString name;
-	unsigned int lma;
-	int size;
-	QByteArray contents;
-};
-
 struct exportType {
 	QList<QVector<QString> > m_data;
 	QMap<QString, int> m_exportFieldMap;
@@ -74,7 +67,6 @@ class MainWindow : public QMainWindow
 	esdbTypeModule *m_genericModule;
 	LoggedInWidget *m_loggedInWidget;
 
-	bool uninitializedFirmwareUpdateSupported();
 public:
 	explicit MainWindow(QWidget *parent = 0);
 	void closeEvent(QCloseEvent *event);
@@ -107,10 +99,6 @@ private:
 	bool m_wasConnected;
 	bool m_autoBackupCheckPerformed;
 
-	int m_fwUpgradeState;
-	struct hc_firmware_file_header *m_NewFirmwareHeader;
-	struct hc_firmware_file_body *m_NewFirmwareBody;
-
 	keePassImportController *m_keePassImportController;
 
 	QMap<QString, exportType> m_exportData;
@@ -130,14 +118,6 @@ private:
 	int m_restoreBlock;
 	QFile *m_restoreFile;
 
-	QWidget *m_firmwareUpdateWidget;
-	QProgressBar *m_firmwareUpdateProgress;
-	QList<fwSection>::iterator m_writingSectionIter;
-	unsigned int m_writingAddr;
-	unsigned int m_writingSize;
-	unsigned int m_totalWritten;
-	QList<fwSection> m_fwSections;
-	QLabel *m_firmwareUpdateStage;
 	QTimer m_resetTimer;
 
 	QWidget *m_uninitPrompt;
@@ -156,29 +136,22 @@ private:
 	QAction *m_wipeDeviceAction;
 	QAction *m_eraseDeviceAction;
 	QAction *m_changePasswordAction;
-	QAction *m_updateFirmwareAction;
 	QMessageBox *m_wipeDeviceDialog;
 	enum signetdev_device_type m_deviceType;
 	int m_signetdevCmdToken;
 	bool m_startedExport;
 	bool m_backupRestoreSupported;
 	KeyboardLayoutTester *m_keyboardLayoutTester;
-	bool m_firmwareUpdate;
-	bool m_factoryFirmwareUpdate;
-	bool m_factoryFirmwareUpdateWiped;
-	bool m_factoryFirmwareUpdateComplete;
 
 	QLabel *m_uninitTestButtonCountWidget;
 	int m_uninitTestButtonCount;
 
-	void firmwareUpdateCompleteMessageBox();
 
 #ifdef Q_OS_UNIX
 	QAction *m_importPassAction;
 	bool m_passDatabaseFound;
 #endif
 
-	void sendFirmwareWriteCmd();
 	void loadSettings();
 	void saveSettings();
 	void autoBackupCheck();
@@ -222,18 +195,8 @@ public slots:
 	void buttonWaitCancel();
 private:
 	void setCentralStack(QWidget *w);
-	void updateFirmwareHC(QByteArray &datum);
-	void updateFirmware(QByteArray &datum);
-	void firmwareFileInvalidMsg();
-	void sendFirmwareWriteCmdHC();
-	int firmwareSizeHC();
-	void createFirmwareUpdateWidget();
-	void updateFirmwareHCIter(bool buttonWait);
-	void firmwareUpgradeCompletionCheck();
 	QString backupFilter();
 	QString backupSuffix();
-	QString firmwareFilter();
-	QString firmwareSuffix();
 	bool uninitializedWipeSupported();
 public slots:
 	void abort();
@@ -244,7 +207,6 @@ public slots:
 	void eraseDeviceUi();
 	void backupDeviceUi();
 	void restoreDeviceUi();
-	void updateFirmwareUi();
 	void wipeDeviceUi();
 	void resetTimer();
 	void connectingTimer();
