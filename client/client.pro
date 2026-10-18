@@ -25,8 +25,10 @@ QMAKE_CFLAGS += -fcommon
 QMAKE_CXXFLAGS += -std=c++11 -DQTCSV_STATIC_LIB
 DISTFILES += client.astylerc
 
-macx|linux-g++|win32:contains(QMAKE_HOST.arch, x86_64) {
-CONFIG += use_sse
+# The faster SSE code only exists on Intel/AMD processors, not on
+# Apple M-chip (ARM) Macs.
+macx|linux-g++|win32 {
+contains(QT_ARCH, x86_64): CONFIG += use_sse
 }
 
 use_sse {
@@ -49,10 +51,13 @@ QMAKE_CXXFLAGS += -msse4.1 -DUSE_SSE
 
 macx {
 ICON = images/signet.icns
-LIBS += -framework CoreFoundation
-LIBS += /usr/local/lib/libgcrypt.a /usr/local/lib/libgpg-error.a -lz
-INCLUDEPATH += /usr/local/include
-QMAKE_LFLAGS += -L/usr/local/lib
+LIBS += -framework CoreFoundation -framework IOKit
+# Libraries come from Homebrew, which lives in /opt/homebrew on
+# Apple M-chip Macs.
+BREW_PREFIX = $$system(brew --prefix 2>/dev/null)
+isEmpty(BREW_PREFIX): BREW_PREFIX = /opt/homebrew
+LIBS += -L$$BREW_PREFIX/lib -lgcrypt -lgpg-error -lz
+INCLUDEPATH += $$BREW_PREFIX/include
 QMAKE_INFO_PLIST = macos/Info.plist
 }
 

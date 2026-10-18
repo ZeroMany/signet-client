@@ -1,7 +1,7 @@
 ### Automatic builds
 
-Every pull request and every change to `main` builds the app for Windows
-and Linux (see `.github/workflows/ci.yml`). To download a build, open the repository on
+Every pull request and every change to `main` builds the app for Windows,
+Linux and Mac (see `.github/workflows/ci.yml`). To download a build, open the repository on
 GitHub, click **Actions**, pick a run, and download the file listed under
 **Artifacts**.
 
@@ -37,22 +37,25 @@ You will need to install Signet's `udev` rule before the client will work. You c
 
 ### Mac OS build steps
 
-To install Signet's build dependencies first install [Brew](https://brew.sh)
+These steps are for Macs with Apple M-chips (M1 and newer). Intel Macs are
+no longer supported. The finished app needs macOS 14 Sonoma or newer.
 
-Once you have Brew, run:
+First install [Homebrew](https://brew.sh). Then run:
 
-	$ brew install qt5 libgcrypt libgpg-error zlib
+	$ brew install qt@5 libgcrypt
 
 To build Signet run:
 
-	$ /usr/local/opt/qt5/bin/qmake client/client.pro CONFIG+=release
+	$ export PATH="$(brew --prefix qt@5)/bin:$PATH"
+	$ qmake client/client.pro CONFIG+=release
 	$ make
+	$ macdeployqt signet.app
+	$ codesign --force --deep --sign - signet.app
 
-The build will create a `signet.app` folder that you can move or copy anywhere. For example:
-
-	$ cp -r signet.app ~/Desktop
-
-The Mac build has not been tested since these instructions were last updated.
+The build creates a `signet.app` folder that you can move to Applications.
+Because the app isn't signed by Apple, the first time you open it macOS
+will refuse. Open **System Settings → Privacy & Security**, scroll down,
+and click **Open Anyway** next to the message about Signet.
 
 ### Windows build steps
 
