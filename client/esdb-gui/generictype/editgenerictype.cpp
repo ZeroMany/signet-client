@@ -72,7 +72,6 @@ void EditGenericType::setup(QString name)
 	QVBoxLayout *top = new QVBoxLayout();
 	QHBoxLayout *typeName = new QHBoxLayout();
 	m_typeNameEdit = new QLineEdit(name);
-	m_typeNameEdit->setReadOnly(SignetApplication::get()->isDeviceEmulated());
 	m_genericFieldsEditor = new GenericFieldsEditor(QList<fieldSpec>(), nullptr, true);
 	typeName->addWidget(new genericText("Type name"));
 	typeName->addWidget(m_typeNameEdit);

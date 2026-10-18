@@ -2,10 +2,6 @@
 
 #ifndef Q_OS_ANDROID
 #include "desktop/mainwindow.h"
-#ifdef WITH_BROWSER_PLUGINS
-#include <QtWebSockets/QWebSocketServer>
-#include <QtWebSockets/QWebSocket>
-#endif
 #else
 #include "android/signetdevicemanager.h"
 #endif
@@ -24,7 +20,6 @@ extern "C" {
 
 #include "systemtray.h"
 
-#include <websockethandler.h>
 
 #define DEFAULT_SCRYPT_N_VALUE_LOG2 12
 #define DEFAULT_SCRYPT_N_VALUE (1<<DEFAULT_SCRYPT_N_VALUE_LOG2)
@@ -57,10 +52,6 @@ SignetApplication::SignetApplication(int &argc, char **argv) :
 	m_signetAsyncListener(nullptr),
 	m_bootMode(HC_BOOT_UNKNOWN_MODE)
 {
-#ifdef WITH_BROWSER_PLUGINS
-	m_nextSocketId = 0;
-    m_webSocketServer = nullptr;
-#endif
 
 #ifndef Q_OS_ANDROID
 	QDesktopWidget desktop;
@@ -178,17 +169,6 @@ void SignetApplication::generateScryptKey(const QString &password, QByteArray &k
 
 }
 
-#ifdef WITH_BROWSER_PLUGINS
-void SignetApplication::websocketResponse(int socketId, const QString &response)
-{
-	Q_UNUSED(socketId);
-	for (auto socketHandler : m_openWebSockets) {
-		if (socketHandler->id() == socketId) {
-			socketHandler->websocketResponse(response);
-		}
-	}
-}
-#endif
 
 void SignetApplication::getFirmwareVersion(int &major, int &minor, int &step)
 {
@@ -359,37 +339,7 @@ void SignetApplication::commandRespS(void *cb_param, void *cmd_user_param, int c
 	}
 }
 
-void SignetApplication::startWebsocketServer()
-{
-#ifndef Q_OS_ANDROID
-#ifdef WITH_BROWSER_PLUGINS
-    if (m_webSocketServer == nullptr) {
-        m_webSocketServer = new QWebSocketServer("Signet", QWebSocketServer::NonSecureMode, this);
-        m_webSocketServer->listen(QHostAddress::LocalHost, 10910);
-        connect(m_webSocketServer, SIGNAL(newConnection()), this, SLOT(newWebSocketConnection()));
-    }
-#endif
-#endif
-}
-
-void SignetApplication::stopWebsocketServer()
-{
-#ifndef Q_OS_ANDROID
-#ifdef WITH_BROWSER_PLUGINS
-    if (m_webSocketServer) {
-        m_webSocketServer->close();
-        for (auto s : m_openWebSockets) {
-            s->disconnect();
-            s->deleteLater();
-        }
-        m_webSocketServer->deleteLater();
-        m_webSocketServer = nullptr;
-    }
-#endif
-#endif
-}
-
-void SignetApplication::init(bool startInTray, QString dbFilename)
+void SignetApplication::init(bool startInTray)
 {
 	signetdev_initialize_api();
 	signetdev_set_device_opened_cb(deviceOpenedS, this);
@@ -399,8 +349,7 @@ void SignetApplication::init(bool startInTray, QString dbFilename)
 	signetdev_set_error_handler(connectionErrorS, this);
 
 #ifndef Q_OS_ANDROID
-	m_dbFilename = dbFilename;
-	m_main_window = new MainWindow(m_dbFilename);
+	m_main_window = new MainWindow();
 
 	connect(this, SIGNAL(connectionError()), m_main_window, SLOT(connectionError()));
 
@@ -420,14 +369,9 @@ void SignetApplication::init(bool startInTray, QString dbFilename)
 #else
 	m_signetDeviceManager = new SignetDeviceManager(m_qmlEngine, this);
 	Q_UNUSED(startInTray);
-	Q_UNUSED(dbFilename);
 #endif
 }
 
-bool SignetApplication::isDeviceEmulated()
-{
-	return m_main_window && m_main_window->getDatabaseFileName().size();
-}
 
 QMessageBox *SignetApplication::messageBoxError(QMessageBox::Icon icon, const QString &title, const QString &text, QWidget *parent)
 {
@@ -495,54 +439,5 @@ void SignetApplication::trayActivated(QSystemTrayIcon::ActivationReason reason)
 	}
 }
 
-#ifdef WITH_BROWSER_PLUGINS
-#include "websockethandler.h"
-
-void SignetApplication::newWebSocketConnection()
-{
-	while (true) {
-		QWebSocket *nextConnection = m_webSocketServer->nextPendingConnection();
-		if (!nextConnection)
-			break;
-		bool acceptConnection = false;
-		if (m_webSocketOriginWhitelist.contains(nextConnection->origin()) || nextConnection->origin().startsWith(QString("moz-extension://")) ||
-		    nextConnection->origin().startsWith(QString("chrome-extension://"))) {
-			if (m_openWebSockets.size() < s_maxWebSocketConnections) {
-				acceptConnection = true;
-			}
-		}
-
-		if (acceptConnection) {
-			auto *handler = new websocketHandler(nextConnection, m_nextSocketId++, this);
-			m_openWebSockets.append(handler);
-			connect(handler, SIGNAL(done(websocketHandler *)), this, SLOT(websocketHandlerDone(websocketHandler *)));
-			connect(handler, SIGNAL(websocketMessage(int, QString)), this, SIGNAL(websocketMessage(int, QString)));
-			connect(handler, SIGNAL(websocketMessage(int, QString)), this, SLOT(websocketMessage_(int, QString)));
-		} else {
-			nextConnection->close();
-			nextConnection->deleteLater();
-		}
-	}
-}
-
-void SignetApplication::websocketMessage_(int id, QString message)
-{
-	Q_UNUSED(id);
-	auto document = QJsonDocument::fromJson(message.toUtf8());
-	if (document.isObject()) {
-		auto obj = document.object();
-		QString msgType = obj["messageType"].toString();
-		if (msgType == "show" && m_main_window) {
-			m_main_window->open();
-		}
-	}
-}
-
-void SignetApplication::websocketHandlerDone(websocketHandler *handler)
-{
-	m_openWebSockets.removeOne(handler);
-	handler->deleteLater();
-}
-#endif
 
 #endif

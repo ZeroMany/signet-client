@@ -65,7 +65,6 @@ void DatabaseField::init(int width, QList<QWidget *> &widgets, bool stretch)
 	type_button->setToolTip("Type");
 	type_button->setFocusPolicy(Qt::NoFocus);
 	connect(type_button, SIGNAL(clicked()), this, SLOT(typeFieldUi()));
-	type_button->setEnabled(!SignetApplication::get()->isDeviceEmulated());
 	type_button->setSizePolicy(QSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed));
 
 
@@ -80,7 +79,6 @@ void DatabaseField::init(int width, QList<QWidget *> &widgets, bool stretch)
 		m_fieldEdit = new QLineEdit();
 		connect(m_fieldEdit, SIGNAL(editingFinished()), this, SIGNAL(editingFinished()));
 		connect(m_fieldEdit, SIGNAL(textEdited(QString)), this, SIGNAL(textEdited(QString)));
-		m_fieldEdit->setReadOnly(SignetApplication::get()->isDeviceEmulated());
 		editWidget = m_fieldEdit;
 	} else {
 		editWidget = m_customEdit;

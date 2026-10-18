@@ -4,13 +4,9 @@
 #
 #-------------------------------------------------
 
-QT       += core gui widgets network concurrent
-
-!without_browser_plugins {
-QT += websockets
-QMAKE_CFLAGS += -DWITH_BROWSER_PLUGINS
-QMAKE_CXXFLAGS += -DWITH_BROWSER_PLUGINS
-}
+# "network" is only used for local communication between running copies
+# of the app (QtSingleApplication). This app never connects to the internet.
+QT       += core gui widgets network concurrent svg
 
 android {
 QT += quick androidextras
@@ -23,6 +19,9 @@ QT += x11extras
 TARGET = signet
 TEMPLATE = app
 QMAKE_CFLAGS += -std=c99
+# The signet-base C code relies on "common" global variables, which newer
+# compilers (GCC 10+) reject by default.
+QMAKE_CFLAGS += -fcommon
 QMAKE_CXXFLAGS += -std=c++11 -DQTCSV_STATIC_LIB
 DISTFILES += client.astylerc
 
@@ -78,13 +77,10 @@ LIBS += -lhid -lsetupapi -lz -lgcrypt -lgpg-error
 # Signetdev sources
 #
 
+# signetdev_noemulate.c replaces signet-base's signetdev_emulate.c, so the
+# app can only read passwords from a real Signet device.
 SOURCES += ../signet-base/signetdev/host/signetdev.c \
-    ../signet-base/signetdev/host/signetdev_emulate.c
-
-!without_browser_plugins {
-SOURCES += websockethandler.cpp
-HEADERS += websockethandler.h
-}
+    signetdev_noemulate.c
 
 
 macx|gnu_linux {
@@ -294,6 +290,7 @@ SOURCES += desktop/main.cpp \
         desktop/about.cpp \
         desktop/resetdevice.cpp \
         desktop/loggedinwidget.cpp \
+        desktop/entryiconprovider.cpp \
         desktop/aspectratiopixmaplabel.cpp \
         desktop/changemasterpassword.cpp \
         desktop/searchlistbox.cpp \
@@ -314,6 +311,7 @@ HEADERS +=  desktop/mainwindow.h \
         desktop/systemtray.h \
         desktop/resetdevice.h \
         desktop/loggedinwidget.h \
+        desktop/entryiconprovider.h \
         desktop/aspectratiopixmaplabel.h \
         desktop/changemasterpassword.h \
         desktop/searchlistbox.h \
@@ -468,14 +466,9 @@ INCLUDEPATH+=../qtcsv/include \
         esdb-gui/bookmark \
         esdb-gui/generic
 
-RESOURCES = resources.qrc
+RESOURCES = resources.qrc icons/icons.qrc
 
 DISTFILES += signet.rc \
-    images/logos/fandango_orig.png \
-    images/logos/indiegogo_orig.png \
-    images/logos/instagram_orig.png \
-    images/logos/qt_orig.png \
-    images/logos/slack_orig.png \
     images/signet.iconset/icon_128x128.png \
     images/signet.iconset/icon_16x16.png \
     images/signet.iconset/icon_256x256.png \

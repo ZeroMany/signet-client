@@ -111,9 +111,6 @@ SettingsDialog::SettingsDialog(MainWindow *mainWindow, bool initial) :
 	m_minimizeToTray = nullptr;
 #endif
 
-    m_browserPluginSupport = new QCheckBox("Enable browser plugin support");
-    m_browserPluginSupport->setChecked(m_settings->browserPluginSupport);
-
 	QVBoxLayout *topLayout = new QVBoxLayout();
 	topLayout->setAlignment(Qt::AlignTop);
 	topLayout->addWidget(m_localBackups);
@@ -128,7 +125,6 @@ SettingsDialog::SettingsDialog(MainWindow *mainWindow, bool initial) :
 #ifndef Q_OS_MACOS
 	topLayout->addWidget(m_minimizeToTray);
 #endif
-    topLayout->addWidget(m_browserPluginSupport);
 	topLayout->addLayout(buttonLayout);
 	setLayout(topLayout);
 	setEnableDisable();
@@ -188,7 +184,6 @@ void SettingsDialog::setEnableDisable()
 
 void SettingsDialog::okayPressed()
 {
-	m_settings->browserPluginSupport = m_browserPluginSupport->isChecked();
 	m_settings->localBackups = m_localBackups->isChecked();
 	m_settings->localBackupPath = m_localBackupPath->text();
 	m_settings->localBackupInterval = m_localBackupInterval->value();
