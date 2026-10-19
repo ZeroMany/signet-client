@@ -3,8 +3,6 @@
 #include <QVBoxLayout>
 #include <QPushButton>
 #include <QLabel>
-#include <QDesktopServices>
-#include <QUrl>
 #include <QDebug>
 
 #include "signetapplication.h"
@@ -84,17 +82,7 @@ About::About(bool connectedDevice, QWidget *parent):
 	buttons->setAlignment(Qt::AlignBottom);
 	QPushButton *closeButton = new QPushButton("Close");
 	closeButton->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-	QPushButton *checkNewVersionButton = new QPushButton("Check for new version");
-	checkNewVersionButton->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-	buttons->addWidget(checkNewVersionButton);
 	buttons->addWidget(closeButton);
 	right->addLayout(buttons);
 	connect(closeButton, SIGNAL(clicked(bool)), this, SLOT(close()));
-	connect(checkNewVersionButton, SIGNAL(clicked(bool)), this, SLOT(checkNewVersion()));
-}
-
-void About::checkNewVersion()
-{
-	QUrl url("https://nthdimtech.com/signet/downloads");
-	QDesktopServices::openUrl(url);
 }

@@ -7,7 +7,6 @@ typeDescEdit::typeDescEdit(const QString &name, bool canRemove, bool secretField
 {
 	m_enableHideCheckbox = false;
 	m_typeEditCombo = new QComboBox();
-	m_typeEditCombo->setEnabled(!SignetApplication::get()->isDeviceEmulated());
 	m_typeEditCombo->addItem("Text", "Text");
 	m_typeEditCombo->addItem("Text (Secret)", ".Text");
 	m_typeEditCombo->addItem("Text block", "Text block");

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+	<title>OpenTUI</title>
+	<circle cx="12" cy="12" r="12" fill="#000000"></circle>
+	<path d="M0 1.2v21.6h24V1.2Zm4.8 6h3.6v9.6H4.8Z" transform="translate(4.8, 4.8) scale(0.6)" fill="white"></path>
+</svg>

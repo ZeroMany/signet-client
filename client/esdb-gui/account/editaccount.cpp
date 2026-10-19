@@ -48,7 +48,6 @@ EditAccount::EditAccount(account *acct, QStringList groupList, QWidget *parent) 
 void EditAccount::setup(QString name)
 {
 	m_accountNameEdit = new QLineEdit(name);
-	m_accountNameEdit->setReadOnly(SignetApplication::get()->isDeviceEmulated());
 
 	QList<fieldSpec> requiredGenericFields;
 	requiredGenericFields.push_back(fieldSpec(QString("Notes"), QString("text block")));

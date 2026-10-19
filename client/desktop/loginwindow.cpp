@@ -52,14 +52,6 @@ LoginWindow::LoginWindow(QWidget *parent) : QWidget(parent),
 
 	layout->addWidget(password_label);
 	layout->addWidget(m_passwordInput);
-	if (m_parent->getDatabaseFileName().size()) {
-		QLabel *l = new genericText("");
-		l->setText("Database file: " + m_parent->getDatabaseFileName());
-		QFrame *f = new QFrame();
-		f->setFrameStyle(QFrame::HLine);
-		top_layout->addWidget(l);
-		top_layout->addWidget(f);
-	}
 	top_layout->addWidget(new genericText("Enter your master password"));
 	top_layout->addItem(layout);
 	top_layout->addWidget(m_incorrectPassword);

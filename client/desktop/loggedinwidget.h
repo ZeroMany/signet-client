@@ -47,34 +47,7 @@ class QUrl;
 #include "esdbaccountmodule.h"
 #include "esdbbookmarkmodule.h"
 #include "../desktop/mainwindow.h"
-
-struct iconAccount {
-	QString name;
-	QString url;
-	QString iconName;
-	QUrl urlObj;
-	iconAccount(const QString &_name,
-                    const QString &_url,
-                    const QString &_icon_name) :
-                name(_name),
-                url(_url),
-                iconName(_icon_name),
-                urlObj(_url)
-	{
-
-	}
-	iconAccount(const QString &_name) :
-                name(_name),
-                url(_name),
-                iconName(_name),
-                urlObj(_name)
-	{
-		url.append(".com");
-		iconName.append(".png");
-	}
-
-	int matchQuality(esdbEntry *acct);
-};
+#include "entryiconprovider.h"
 
 struct entryAction {
 	QString name;
@@ -97,7 +70,7 @@ class LoggedInWidget : public QWidget
 	MainWindow *m_mainWindow;
 	bool m_fileMode;
 
-	QList<iconAccount> m_icon_accounts;
+	EntryIconProvider m_iconProvider;
 	QMap<int, esdbEntry *> m_entries;
 
 	struct typeData {
@@ -170,10 +143,6 @@ class LoggedInWidget : public QWidget
 	QList<typeData *> m_typeData;
 	typeData *m_miscTypeData;
 	int scoreUrlMatch(const QUrl &a, const QUrl &b);
-#ifdef WITH_BROWSER_PLUGINS
-	void websocketPageLoaded(int socketId, QString url, bool hasLoginForm, bool hasUsernameField, bool hasPasswordField);
-	void websocketRequestFields(int socketId, const QString &path, const QString &title, const QStringList &requestedFields);
-#endif
 public:
 	const std::vector<esdbGenericModule *> &getGenericModules() const;
 	enum ID_TASK {
@@ -208,6 +177,7 @@ signals:
 	void background();
 public slots:
 	void open();
+	void reloadIcons();
 	void entryChanged(int id);
 	void signetdevReadUIdResp(signetdevCmdRespInfo info, QByteArray data, QByteArray mask);
 	void signetdevCmdResp(signetdevCmdRespInfo info);
@@ -227,21 +197,11 @@ public slots:
 	void signetDevEvent(int);
 	void expanded(QModelIndex index);
 	void collapsed(QModelIndex index);
-private slots:
-#ifdef WITH_BROWSER_PLUGINS
-	void websocketMessage(int socketId, QString message);
-#endif
-	void buttonWaitTimeout();
-	void buttonWaitCanceled();
 private:
         ButtonWaitWidget *m_buttonWaitWidget;
 	int m_socketId;
 	QStringList m_requestedFields;
 	bool m_backgroundAfterTask;
-#ifdef WITH_BROWSER_PLUGINS
-	void idTaskComplete(bool error, int id, esdbEntry *entry, enum ID_TASK task, int intent);
-	void websocketShow(int socketId, const QString &path, const QString &title);
-#endif
 };
 
 #endif // LOGGEDINWIDGET_H

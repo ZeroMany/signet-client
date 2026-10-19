@@ -50,13 +50,6 @@ class DatabaseImportController;
 class DatabaseImporter;
 class LoggedInWidget;
 class QFileDialog;
-struct fwSection {
-	QString name;
-	unsigned int lma;
-	int size;
-	QByteArray contents;
-};
-
 struct exportType {
 	QList<QVector<QString> > m_data;
 	QMap<QString, int> m_exportFieldMap;
@@ -66,7 +59,6 @@ struct exportType {
 class MainWindow : public QMainWindow
 {
 	Q_OBJECT
-	QString m_dbFilename;
 	QString m_backupDirectory;
 	localSettings m_settings;
 	esdbTypeModule *m_genericTypeModule;
@@ -75,9 +67,8 @@ class MainWindow : public QMainWindow
 	esdbTypeModule *m_genericModule;
 	LoggedInWidget *m_loggedInWidget;
 
-	bool uninitializedFirmwareUpdateSupported();
 public:
-	explicit MainWindow(QString dbFilename, QWidget *parent = 0);
+	explicit MainWindow(QWidget *parent = 0);
 	void closeEvent(QCloseEvent *event);
 	~MainWindow();
 
@@ -86,11 +77,6 @@ public:
 	localSettings *getSettings()
 	{
 		return &m_settings;
-	}
-
-	QString getDatabaseFileName()
-	{
-		return m_dbFilename;
 	}
 
 	QStackedWidget *loggedInStack()
@@ -113,10 +99,6 @@ private:
 	bool m_wasConnected;
 	bool m_autoBackupCheckPerformed;
 
-	int m_fwUpgradeState;
-	struct hc_firmware_file_header *m_NewFirmwareHeader;
-	struct hc_firmware_file_body *m_NewFirmwareBody;
-
 	keePassImportController *m_keePassImportController;
 
 	QMap<QString, exportType> m_exportData;
@@ -136,22 +118,12 @@ private:
 	int m_restoreBlock;
 	QFile *m_restoreFile;
 
-	QWidget *m_firmwareUpdateWidget;
-	QProgressBar *m_firmwareUpdateProgress;
-	QList<fwSection>::iterator m_writingSectionIter;
-	unsigned int m_writingAddr;
-	unsigned int m_writingSize;
-	unsigned int m_totalWritten;
-	QList<fwSection> m_fwSections;
-	QLabel *m_firmwareUpdateStage;
 	QTimer m_resetTimer;
 
 	QWidget *m_uninitPrompt;
 	QMenu *m_exportMenu;
 	QMenu *m_importMenu;
 
-	QAction *m_openAction;
-	QAction *m_closeAction;
 	QAction *m_saveAction;
 	QAction *m_settingsAction;
 	QAction *m_exportCSVAction;
@@ -164,32 +136,24 @@ private:
 	QAction *m_wipeDeviceAction;
 	QAction *m_eraseDeviceAction;
 	QAction *m_changePasswordAction;
-	QAction *m_updateFirmwareAction;
 	QMessageBox *m_wipeDeviceDialog;
 	enum signetdev_device_type m_deviceType;
 	int m_signetdevCmdToken;
 	bool m_startedExport;
 	bool m_backupRestoreSupported;
 	KeyboardLayoutTester *m_keyboardLayoutTester;
-	bool m_firmwareUpdate;
-	bool m_factoryFirmwareUpdate;
-	bool m_factoryFirmwareUpdateWiped;
-	bool m_factoryFirmwareUpdateComplete;
 
 	QLabel *m_uninitTestButtonCountWidget;
 	int m_uninitTestButtonCount;
 
-	void firmwareUpdateCompleteMessageBox();
 
 #ifdef Q_OS_UNIX
 	QAction *m_importPassAction;
 	bool m_passDatabaseFound;
 #endif
 
-	void sendFirmwareWriteCmd();
 	void loadSettings();
 	void saveSettings();
-	void settingsChanged();
 	void autoBackupCheck();
 	void showEvent(QShowEvent *event);
 	void backupDevice(QString fileName);
@@ -210,10 +174,8 @@ private slots:
 	void restoreError();
 	void backupError();
 	void importDone(bool success);
-	void closeUi();
 	void keyboardLayoutNotConfiguredDialogFinished(int rc);
 	void backupDatabasePromptDialogFinished(int rc);
-	void openFileDialogFinished(int rc);
 public slots:
 	void signetDevEvent(int);
 	void deviceOpened(enum signetdev_device_type dev_type);
@@ -232,32 +194,19 @@ public slots:
 	void buttonWaitTimeout();
 	void buttonWaitCancel();
 private:
-	QFileDialog *m_openFileDialog;
 	void setCentralStack(QWidget *w);
-	void updateFirmwareHC(QByteArray &datum);
-	void updateFirmware(QByteArray &datum);
-	void firmwareFileInvalidMsg();
-	void sendFirmwareWriteCmdHC();
-	int firmwareSizeHC();
-	void createFirmwareUpdateWidget();
-	void updateFirmwareHCIter(bool buttonWait);
-	void firmwareUpgradeCompletionCheck();
 	QString backupFilter();
 	QString backupSuffix();
-	QString firmwareFilter();
-	QString firmwareSuffix();
 	bool uninitializedWipeSupported();
 public slots:
 	void abort();
 	void quit();
 	void enterDeviceState(int);
-	void openUi();
 	void logoutUi();
 	void changePasswordUi();
 	void eraseDeviceUi();
 	void backupDeviceUi();
 	void restoreDeviceUi();
-	void updateFirmwareUi();
 	void wipeDeviceUi();
 	void resetTimer();
 	void connectingTimer();
@@ -271,7 +220,6 @@ public slots:
 	void importCSVUI();
 	void exportCSVUi();
 	void aboutUi();
-	void startOnlineHelp();
 	void applyKeyboardLayoutChanges();
 	void keyboardLayoutTesterClosing(bool applyChanges);
 };

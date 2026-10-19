@@ -17,7 +17,6 @@ class SettingsDialog : public QDialog
 {
 	Q_OBJECT
 	bool m_initial;
-    QCheckBox *m_browserPluginSupport;
 	QCheckBox *m_localBackups;
 	QLineEdit *m_localBackupPath;
 	QSpinBox  *m_localBackupInterval;
@@ -32,6 +31,9 @@ class SettingsDialog : public QDialog
 	QString m_activeKeyboardLayout;
 	QLabel *m_keyboardLayoutUnconfiguredWarning;
 	QCheckBox *m_minimizeToTray;
+	QLabel *m_iconPackLabel;
+	QPushButton *m_removeIconPackButton;
+	void updateIconPackInfo();
 public:
 	SettingsDialog(MainWindow *mainWindow, bool initial);
 public slots:
@@ -42,6 +44,8 @@ public slots:
 	void configureKeyboardLayout();
 	void applyKeyboardLayoutChanges();
 	void keyboardLayoutTesterClosing(bool applyChanges);
+	void importIconPack();
+	void removeIconPack();
 };
 
 #endif // SETTINGSDIALOG_H

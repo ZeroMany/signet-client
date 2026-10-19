@@ -51,42 +51,6 @@ extern "C" {
 #include "datatypelistmodel.h"
 #include "generictext.h"
 
-int iconAccount::matchQuality(esdbEntry *entry)
-{
-	int quality = 0;
-	QString acct_name = entry->getTitle();
-	QString acct_url = entry->getUrl();
-	if (!QString::compare(acct_name, name, Qt::CaseInsensitive)) {
-		quality += 2;
-	}
-
-	if (acct_name.startsWith(name, Qt::CaseInsensitive)) {
-		quality++;
-	}
-	QUrl acctNameUrl(acct_name);
-	QUrl acctUrl(acct_url);
-
-	QUrl *compUrl = nullptr;
-	if (acctUrl.isValid()) {
-		compUrl = &acctUrl;
-	}
-	if (acctNameUrl.isValid()) {
-		compUrl = &acctNameUrl;
-	}
-
-	if (compUrl && urlObj.isValid()) {
-		QString iconUrlPath = urlObj.path();
-		QStringList l = compUrl->path().split('/');
-		if (l.length()) {
-			QString &domain = l.first();
-			if (domain.endsWith(iconUrlPath)) {
-				quality += 2;
-			}
-		}
-	}
-	return quality;
-}
-
 LoggedInWidget::typeData::typeData(esdbTypeModule *_module) :
 	module(_module),
 	entries(nullptr),
@@ -144,89 +108,18 @@ LoggedInWidget::LoggedInWidget(QProgressBar *loading_progress, MainWindow *mw, Q
 	m_buttonWaitWidget(nullptr)
 {
 	m_genericIcon = QIcon(":images/generic-entry.png");
-	m_icon_accounts.append(
-		iconAccount("facebook")
-	);
-	m_icon_accounts.append(
-		iconAccount("kickstarter")
-	);
-	m_icon_accounts.append(
-		iconAccount("twitter")
-	);
-	m_icon_accounts.append(
-		iconAccount("linkedin")
-	);
-	m_icon_accounts.append(
-		iconAccount("patreon")
-	);
-	m_icon_accounts.append(
-		iconAccount("gmail")
-	);
-	m_icon_accounts.append(
-		iconAccount("github")
-	);
-	m_icon_accounts.append(
-		iconAccount("paypal")
-	);
-	m_icon_accounts.append(
-		iconAccount("apple")
-	);
-	m_icon_accounts.append(
-		iconAccount("macrofab")
-	);
-	m_icon_accounts.append(
-		iconAccount("fandango")
-	);
-	m_icon_accounts.append(
-		iconAccount("indiegogo")
-	);
-	m_icon_accounts.append(
-		iconAccount("slack")
-	);
-	m_icon_accounts.append(
-		iconAccount("qt","qt.io","qt.png")
-	);
-	m_icon_accounts.append(
-		iconAccount("instagram")
-	);
-	m_icon_accounts.append(
-		iconAccount("Crowd Supply", "crowdsupply.com", "crowdsupply.png")
-	);
-	m_icon_accounts.append(
-		iconAccount("chase","chase.com", "chase_bank.png")
-	);
-	m_icon_accounts.append(
-		iconAccount("dropbox")
-	);
-	m_icon_accounts.append(
-		iconAccount("tumblr")
-	);
-	m_icon_accounts.append(
-		iconAccount("steam")
-	);
-	m_icon_accounts.append(
-		iconAccount("amazon")
-	);
-	m_icon_accounts.append(
-		iconAccount("microsoft")
-	);
-	m_icon_accounts.append(
-		iconAccount("reddit")
-	);
 
 	m_activeTypeIndex = 0;
 
 	m_dataTypesModel = new DataTypeListModel();
-
-	bool fromFile = mw->getDatabaseFileName().size();
 
 	genericTypeDesc *miscTypeDesc = new genericTypeDesc(-1);
 	miscTypeDesc->name = "Misc";
 	miscTypeDesc->typeId = 0;
 	m_genericModules.push_back(new esdbGenericModule(miscTypeDesc));
 
-	m_writeEnabled = !fromFile;
-	m_typeEnabled = !fromFile;
+	m_writeEnabled = true;
+	m_typeEnabled = true;
 
 	m_accounts = new esdbAccountModule();
 	typeData *accountsTypeData = new typeData(m_accounts);
@@ -255,9 +148,6 @@ LoggedInWidget::LoggedInWidget(QProgressBar *loading_progress, MainWindow *mw, Q
 
 	SignetApplication *app = SignetApplication::get();
 	connect(app, SIGNAL(focusChanged(QWidget*,QWidget*)), this, SLOT(focusChanged(QWidget*,QWidget*)));
-#ifdef WITH_BROWSER_PLUGINS
-	connect(app, SIGNAL(websocketMessage(int, QString)), this, SLOT(websocketMessage(int, QString)));
-#endif
 
 	connect(app, SIGNAL(signetdevCmdResp(signetdevCmdRespInfo)), this,
 		SLOT(signetdevCmdResp(signetdevCmdRespInfo)));
@@ -319,18 +209,10 @@ LoggedInWidget::LoggedInWidget(QProgressBar *loading_progress, MainWindow *mw, Q
 	m_viewSelector->setModel(m_dataTypesModel);
 	m_viewSelector->setCurrentIndex(m_activeTypeIndex);
 	connect(m_viewSelector, SIGNAL(currentIndexChanged(int)), this, SLOT(currentTypeIndexChanged(int)));
+	connect(IconPackNotifier::get(), SIGNAL(changed()), this, SLOT(reloadIcons()));
 
 	QBoxLayout *top_layout = new QBoxLayout(QBoxLayout::TopToBottom);
 	top_layout->setAlignment(Qt::AlignTop);
-
-	if (mw->getDatabaseFileName().size()) {
-		QLabel *l = new QLabel();
-		l->setText("Database file: " + mw->getDatabaseFileName());
-		QFrame *f = new QFrame();
-		f->setFrameStyle(QFrame::HLine);
-		top_layout->addWidget(l);
-		top_layout->addWidget(f);
-	}
 
 	top_layout->addLayout(filter_layout);
 	top_layout->addWidget(m_viewSelector);
@@ -557,163 +439,6 @@ int LoggedInWidget::scoreUrlMatch(const QUrl &a, const QUrl &b)
 #include <QJsonDocument>
 #include "account.h"
 
-#ifdef WITH_BROWSER_PLUGINS
-void LoggedInWidget::websocketPageLoaded(int socketId, QString url, bool hasLoginForm, bool hasUsernameField, bool hasPasswordField)
-{
-	QUrl selectedUrl(url, QUrl::TolerantMode);
-	QJsonArray matches;
-
-	auto entryMap = typeNameToEntryMap("Accounts");
-	for (auto entry : *entryMap) {
-		QString entUrlStr = entry->getUrl();
-		QUrl entryUrl(entUrlStr, QUrl::TolerantMode);
-		if (!entryUrl.scheme().size()) {
-			entUrlStr = "http://" + entUrlStr;
-			entryUrl.setUrl(entUrlStr);
-		}
-		if (!entryUrl.isValid()) {
-			continue;
-		}
-
-		int score = scoreUrlMatch(selectedUrl, entryUrl);
-		if (score > 0) {
-			QJsonObject match;
-			match.insert("path", QJsonValue(entry->getPath()));
-			match.insert("title", QJsonValue(entry->getTitle()));
-			auto *account = static_cast<struct account *>(entry);
-			match.insert("username", QJsonValue(account->userName));
-			match.insert("email", QJsonValue(account->email));
-			matches.append(match);
-		}
-	}
-	QJsonDocument doc(matches);
-	SignetApplication::get()->websocketResponse(socketId, QString::fromUtf8(doc.toJson()));
-}
-
-void LoggedInWidget::websocketShow(int socketId, const QString &path, const QString &title)
-{
-	Q_UNUSED(socketId);
-
-	QString fullTitle = path + "/" + title;
-
-	int accountsIndex;
-	bool foundAccountsIndex = false;
-
-	for (int i = 0; i < m_typeData.size(); i++) {
-		if (m_typeData[i]->module->name() == "Accounts") {
-			accountsIndex = i;
-			foundAccountsIndex = true;
-		}
-	}
-
-	if (!foundAccountsIndex) {
-		return;
-	}
-
-	if (m_activeType->module->name() != "Accounts") {
-		m_viewSelector->setCurrentIndex(accountsIndex);
-	}
-
-	esdbEntry *matchingEntry = findEntry("Accounts", fullTitle);
-
-	if (matchingEntry) {
-		QModelIndex idx = m_typeData[accountsIndex]->model->findEntry(matchingEntry);
-		m_searchListbox->setCurrentIndex(idx);
-		m_searchListbox->scrollTo(idx);
-		selectEntry(matchingEntry);
-	}
-}
-
-void LoggedInWidget::websocketRequestFields(int socketId, const QString &path, const QString &title, const QStringList &requestedFields)
-{
-	Q_UNUSED(socketId);
-
-	QString fullTitle = path + "/" + title;
-
-	esdbEntry *matchingEntry = findEntry("Accounts", fullTitle);
-
-	if (matchingEntry) {
-		if (beginIDTask(matchingEntry->id, ID_TASK_READ, 0, nullptr)) {
-			if (window()->isVisible() && !(window()->windowState() & Qt::WindowMinimized)) {
-				m_backgroundAfterTask = false;
-			} else {
-				m_backgroundAfterTask = true;
-			}
-			m_requestedFields = requestedFields;
-			m_socketId = socketId;
-			auto waitWidget = beginButtonWait(QString("Read entry ") +  QString("\"") + matchingEntry->getTitle() + QString("\""), false);
-			connect(waitWidget, SIGNAL(timeout()), this, SLOT(buttonWaitTimeout()));
-			connect(waitWidget, SIGNAL(canceled()), this, SLOT(buttonWaitCanceled()));
-		}
-	}
-}
-
-void LoggedInWidget::buttonWaitTimeout()
-{
-	endButtonWait();
-	finishTask();
-}
-
-void LoggedInWidget::buttonWaitCanceled()
-{
-	::signetdev_cancel_button_wait();
-	endButtonWait();
-	finishTask();
-}
-
-void LoggedInWidget::websocketMessage(int socketId, QString message)
-{
-	auto document = QJsonDocument::fromJson(message.toUtf8());
-	if (document.isObject()) {
-		auto obj = document.object();
-		QString msgType = obj["messageType"].toString();
-		if (msgType == QString("pageLoaded")) {
-			QString url = obj["url"].toString();
-			bool hasLoginForm = obj["hasLoginForm"].toBool();
-			bool hasUsernameField = obj["hasUsernameField"].toBool();
-			bool hasPasswordField = obj["hasPasswordField"].toBool();
-			websocketPageLoaded(socketId, url, hasLoginForm, hasUsernameField, hasPasswordField);
-		} else if (msgType == QString("requestFields")) {
-			QString path = obj["path"].toString();
-			QString title = obj["title"].toString();
-			QJsonArray requestedFields_ = obj["requestedFields"].toArray();
-			QStringList requestedFields;
-			for (auto r : requestedFields_) {
-				requestedFields.append(r.toString());
-			}
-			websocketRequestFields(socketId, path, title, requestedFields);
-		} else if (msgType == QString("show")) {
-			QString path = obj["path"].toString();
-			QString title = obj["title"].toString();
-			websocketShow(socketId, path, title);
-		}
-	}
-
-}
-
-void LoggedInWidget::idTaskComplete(bool error, int id, esdbEntry *entry, enum ID_TASK task, int intent)
-{
-	endButtonWait();
-
-	if (!error && task == ID_TASK_READ && entry && intent == 0 /* TODO: magic number */) {
-		QVector<genericField> fields;
-		entry->getFields(fields);
-		QJsonObject response;
-		for (auto field : fields) {
-			if (m_requestedFields.contains(field.name.toLower())) {
-				response.insert(field.name.toLower(), field.value);
-			}
-		}
-		QJsonDocument doc(response);
-		SignetApplication::get()->websocketResponse(m_socketId, QString::fromUtf8(doc.toJson()));
-		if (m_backgroundAfterTask) {
-			background();
-		}
-	}
-	m_socketId = -1;
-	m_requestedFields.clear();
-}
-#endif
 
 bool LoggedInWidget::beginIDTask(int id, enum ID_TASK task, int intent, EsdbActionBar *bar)
 {
@@ -1083,11 +808,6 @@ void LoggedInWidget::getEntryDone(int id, int code, block *blk, bool task)
 						genericTypeDesc *genericTypeDesc_ = static_cast<genericTypeDesc *>(entry);
 						addGenericType(genericTypeDesc_);
 					}
-#ifdef WITH_BROWSER_PLUGINS
-					else if (task) {
-						idTaskComplete(false, id, entry, idTask, m_taskIntent);
-					}
-#endif
 				}
 			} else if (m_populating) {
 				m_populatingCantRead++;
@@ -1259,28 +979,27 @@ void LoggedInWidget::finishTask()
 	m_idTask = ID_TASK_NONE;
 }
 
-void LoggedInWidget::entryIconCheck(esdbEntry *entry)
+// Called when an icon pack was imported or removed in Settings.
+void LoggedInWidget::reloadIcons()
 {
-	QList<iconAccount>::iterator iter = m_icon_accounts.begin();
-	iconAccount *bestMatch = nullptr;
-	int bestMatchQuality = 0;
-	for (; iter != m_icon_accounts.end(); iter++) {
-		iconAccount &i_account = *iter;
-		int quality = i_account.matchQuality(entry);
-		if (quality > bestMatchQuality) {
-			bestMatch = &i_account;
-			bestMatchQuality = quality;
+	m_iconProvider.reload();
+	for (esdbEntry *entry : m_entries) {
+		if (entry) {
+			entryIconCheck(entry);
 		}
 	}
-	if (bestMatch) {
-		QString fn(":images/logos/");
-		fn.append(bestMatch->iconName);
-		entry->setIcon(QIcon(fn));
-	} else {
-		entry->setIcon(m_genericIcon);
+	if (m_activeType) {
+		populateEntryList(m_activeType, m_filterEdit->text());
 	}
-	if (entry->type == ESDB_TYPE_GENERIC_TYPE_DESC) {
+}
 
+void LoggedInWidget::entryIconCheck(esdbEntry *entry)
+{
+	QIcon icon = m_iconProvider.iconFor(entry->getTitle(), entry->getUrl());
+	if (icon.isNull()) {
+		entry->setIcon(m_genericIcon);
+	} else {
+		entry->setIcon(icon);
 	}
 }
 

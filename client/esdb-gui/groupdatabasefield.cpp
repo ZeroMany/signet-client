@@ -12,7 +12,6 @@ GroupDatabaseField::GroupDatabaseField(int width, QStringList currentGroups, QWi
 	m_groupCombo->setInsertPolicy(QComboBox::NoInsert);
 	m_groupCombo->insertItems(0, currentGroups);
 	m_groupCombo->setDuplicatesEnabled(false);
-	m_groupCombo->setEnabled(!SignetApplication::get()->isDeviceEmulated());
 	m_groupCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
 	connect(m_groupCombo, SIGNAL(currentTextChanged(QString)), this, SIGNAL(textEdited(QString)));
 	m_customEdit = m_groupCombo;

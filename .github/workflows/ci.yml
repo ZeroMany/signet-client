@@ -1,4 +1,4 @@
-# Builds the Signet client for Windows and Linux for every pull request and
+# Builds the Signet client for Windows, Linux and Mac for every pull request and
 # every change to main. The finished programs appear under "Artifacts" on
 # the run's page (GitHub -> Actions tab -> pick a run).
 name: CI
@@ -24,7 +24,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: true
       - uses: msys2/setup-msys2@v2
@@ -44,7 +44,7 @@ jobs:
           export PATH=/mingw64/qt5-static/bin:$PATH
           qmake client/client.pro CONFIG+=release
           mingw32-make -j4
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: signet-windows
           path: release/signet.exe
@@ -52,22 +52,47 @@ jobs:
   linux:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: true
       - name: Install build tools
         run: |
           sudo apt-get update
           sudo apt-get install -y qtbase5-dev qt5-qmake libqt5svg5-dev \
-            libqt5websockets5-dev libqt5x11extras5-dev libgcrypt20-dev \
-            zlib1g-dev libx11-dev
+            libqt5x11extras5-dev libgcrypt20-dev zlib1g-dev libx11-dev
       - name: Build
         run: |
           qmake client/client.pro CONFIG+=release
           make -j4
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: signet-linux
           path: |
             signet
             signet-base/signetdev/host/linux/50-signet.rules
+
+  # Apple M-chip Macs only (macos-14 runs on Apple silicon). The app needs
+  # macOS 14 Sonoma or newer, because that is what Homebrew's Qt is built for.
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - name: Install build tools
+        run: brew install qt@5 libgcrypt
+      - name: Build
+        run: |
+          export PATH="$(brew --prefix qt@5)/bin:$PATH"
+          qmake client/client.pro CONFIG+=release
+          make -j3
+          # Copy Qt and the other libraries into signet.app so it runs on
+          # Macs without Homebrew, then re-sign it (unsigned apps don't run
+          # on M-chip Macs; this is a local signature, not an Apple one).
+          macdeployqt signet.app
+          codesign --force --deep --sign - signet.app
+          ditto -c -k --keepParent signet.app signet-macos.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: signet-macos
+          path: signet-macos.zip
