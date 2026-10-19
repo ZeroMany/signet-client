@@ -1,6 +1,8 @@
 #include "signetapplication.h"
 
+#ifndef SIGNET_NO_KEEPASS
 #include "crypto/Crypto.h"
+#endif
 
 #include <QThread>
 #include <QCommandLineParser>
@@ -8,13 +10,19 @@
 
 int main(int argc, char **argv)
 {
-#if QT_VERSION >= 0x00050600
+#ifdef Q_OS_ANDROID
+	// Phones have dense screens, so let Qt scale everything up.
+	QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+#elif QT_VERSION >= 0x00050600
 	QCoreApplication::setAttribute(Qt::AA_DisableHighDpiScaling);
 #endif
 	SignetApplication *app = new SignetApplication(argc, argv);
 
+#ifndef SIGNET_NO_KEEPASS
 	Crypto::init();
+#endif
 
+#ifndef Q_OS_ANDROID
 	if (app->isRunning()) {
 		QIcon signetIcon = QIcon(":/images/signet.png");
 		QMessageBox *box = new QMessageBox(QMessageBox::Information, "Signet",
@@ -55,6 +63,7 @@ int main(int argc, char **argv)
 		}
 		box->deleteLater();
 	}
+#endif
 
 	QCommandLineParser parser;
 	parser.addHelpOption();

@@ -20,6 +20,12 @@
 
 #include "zip.h"
 
+// Importing from "pass" runs the gpg program, which only desktop Linux
+// and Mac have.
+#if defined(Q_OS_UNIX) && !defined(Q_OS_ANDROID)
+#define SIGNET_PASS_IMPORT
+#endif
+
 struct signetdevCmdRespInfo;
 
 namespace Ui
@@ -147,7 +153,7 @@ private:
 	int m_uninitTestButtonCount;
 
 
-#ifdef Q_OS_UNIX
+#ifdef SIGNET_PASS_IMPORT
 	QAction *m_importPassAction;
 	bool m_passDatabaseFound;
 #endif
@@ -212,9 +218,11 @@ public slots:
 	void connectingTimer();
 	void background();
 	void openSettingsUi();
+#ifndef SIGNET_NO_KEEPASS
 	void importKeePassUI();
+#endif
 	void passwordSlotsUi();
-#ifdef Q_OS_UNIX
+#ifdef SIGNET_PASS_IMPORT
 	void importPassUI();
 #endif
 	void importCSVUI();

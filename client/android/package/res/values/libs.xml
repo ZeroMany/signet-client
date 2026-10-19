@@ -1,11 +1,9 @@
 <?xml version='1.0' encoding='utf-8'?>
+<!-- Qt 5.15 template. Filled in by Qt's build tool; don't edit by hand. -->
 <resources>
     <array name="qt_sources">
-        <item>https://download.qt.io/ministro/android/qt5/qt-5.9</item>
+        <item>https://download.qt.io/ministro/android/qt5/qt-5.14</item>
     </array>
-
-    <!-- The following is handled automatically by the deployment tool. It should
-         not be edited manually. -->
 
     <array name="bundled_libs">
         <!-- %%INSERT_EXTRA_LIBS%% -->
@@ -15,11 +13,11 @@
          <!-- %%INSERT_QT_LIBS%% -->
      </array>
 
-    <array name="bundled_in_lib">
-        <!-- %%INSERT_BUNDLED_IN_LIB%% -->
-    </array>
-    <array name="bundled_in_assets">
-        <!-- %%INSERT_BUNDLED_IN_ASSETS%% -->
+    <array name="load_local_libs">
+        <!-- %%INSERT_LOCAL_LIBS%% -->
     </array>
 
+    <string name="static_init_classes"><!-- %%INSERT_INIT_CLASSES%% --></string>
+    <string name="use_local_qt_libs"><!-- %%USE_LOCAL_QT_LIBS%% --></string>
+    <string name="bundle_local_qt_libs"><!-- %%BUNDLE_LOCAL_QT_LIBS%% --></string>
 </resources>

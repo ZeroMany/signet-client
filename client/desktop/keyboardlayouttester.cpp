@@ -6,9 +6,14 @@
 #include <QBoxLayout>
 #include <QPushButton>
 
+#ifdef Q_OS_ANDROID
+// Android counts as Linux to Qt, but has no X11 display to ask.
+#define X11_COMPARE_MODMAP 0
+#else
 #define X11_COMPARE_MODMAP 1
+#endif
 
-#ifdef Q_OS_LINUX
+#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
 #include <QtX11Extras/QX11Info>
 #include <X11/Xlib.h>
 #define XK_MISCELLANY
