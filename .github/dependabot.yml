@@ -15,3 +15,7 @@ updates:
     schedule:
       interval: monthly
     target-branch: main
+    ignore:
+      # qtcsv moved to Qt 6 after the version we use, and this app is built
+      # with Qt 5, so newer qtcsv versions don't compile here.
+      - dependency-name: qtcsv
