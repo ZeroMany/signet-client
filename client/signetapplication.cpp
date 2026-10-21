@@ -162,10 +162,13 @@ SignetApplication::SignetApplication(int &argc, char **argv) :
 void SignetApplication::generateScryptKey(const QString &password, QByteArray &key, const QByteArray &salt, unsigned int N, unsigned int r, unsigned int s)
 {
 	QByteArray password_utf8 = password.toUtf8();
-	crypto_scrypt((u8 *)password_utf8.data(), password_utf8.size(),
+	if (crypto_scrypt((u8 *)password_utf8.data(), password_utf8.size(),
 		      (u8 *)salt.data(), salt.size(),
 		      N, r, s,
-		      (u8 *)key.data(), key.size());
+		      (u8 *)key.data(), key.size()) != 0) {
+		key.clear();
+	}
+	password_utf8.fill(0);
 
 }
 
@@ -209,15 +212,28 @@ void SignetApplication::generateKey(const QString &password, QByteArray &key, co
 	}
 	break;
 	case 1: {
-		if (hashfn.size() >= 5) {
-			unsigned int N = ((unsigned int )1) << hashfn.at(1);
-			unsigned int r = ((unsigned int)hashfn.at(2)) + (((unsigned int)hashfn.at(3))<<8);
-			unsigned int p = (unsigned int)hashfn.at(4);
-			generateScryptKey(password, key, salt, N, r, p);
+		// The device tells us how much work the scrypt step should take.
+		// Only accept settings in a safe range: a fake or tampered device
+		// could otherwise ask for almost no work, making the master
+		// password easy to crack from what we send it, or for so much
+		// that the computer runs out of memory.
+		if (hashfn.size() < 5 || salt.size() < 16) {
+			key.clear();
+			break;
 		}
+		unsigned int log2N = (u8)hashfn.at(1);
+		unsigned int r = ((unsigned int)(u8)hashfn.at(2)) + (((unsigned int)(u8)hashfn.at(3)) << 8);
+		unsigned int p = (u8)hashfn.at(4);
+		if (log2N < 12 || log2N > 20 || r < 8 || r > 32 || p < 1 || p > 16) {
+			key.clear();
+			break;
+		}
+		unsigned int N = 1u << log2N;
+		generateScryptKey(password, key, salt, N, r, p);
 	}
 	break;
 	default:
+		key.clear();
 		break;
 	}
 }
@@ -259,8 +275,9 @@ void SignetApplication::commandRespS(void *cb_param, void *cmd_user_param, int c
 	case SIGNETDEV_CMD_READ_ALL_UIDS: {
 		if (resp_data && resp_code == OKAY) {
 			signetdev_read_all_uids_resp_data *resp = (signetdev_read_all_uids_resp_data *)resp_data;
-			QByteArray data((char *)resp->data, resp->size);
-			QByteArray mask((char *)resp->mask, resp->size);
+			int size = qBound(0, resp->size, MAX_CMD_PACKET_PAYLOAD_SIZE);
+			QByteArray data((char *)resp->data, size);
+			QByteArray mask((char *)resp->mask, size);
 			this_->signetdevReadAllUIdsResp(info, resp->uid, data, mask);
 		} else {
 			QByteArray data;
@@ -271,7 +288,10 @@ void SignetApplication::commandRespS(void *cb_param, void *cmd_user_param, int c
 	break;
 	case SIGNETDEV_CMD_GET_RAND_BITS: {
 		signetdev_get_rand_bits_resp_data *resp = (signetdev_get_rand_bits_resp_data *)resp_data;
-		QByteArray data((const char *)resp->data, resp->size);
+		QByteArray data;
+		if (resp) {
+			data = QByteArray((const char *)resp->data, qBound(0, resp->size, MAX_CMD_PACKET_PAYLOAD_SIZE));
+		}
 		this_->signetdevGetRandBits(info, data);
 	}
 	break;
@@ -299,8 +319,9 @@ void SignetApplication::commandRespS(void *cb_param, void *cmd_user_param, int c
 	case SIGNETDEV_CMD_READ_UID: {
 		if (resp_data && resp_code == OKAY) {
 			signetdev_read_uid_resp_data *resp = (signetdev_read_uid_resp_data *)resp_data;
-			QByteArray data((char *)resp->data, resp->size);
-			QByteArray mask((char *)resp->mask, resp->size);
+			int size = qBound(0, resp->size, MAX_CMD_PACKET_PAYLOAD_SIZE);
+			QByteArray data((char *)resp->data, size);
+			QByteArray mask((char *)resp->mask, size);
 			this_->signetdevReadUIdResp(info, data, mask);
 		} else {
 			QByteArray data;

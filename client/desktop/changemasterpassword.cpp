@@ -105,6 +105,12 @@ void ChangeMasterPassword::keyGenerated()
 		m_generatingOldKey = false;
 		m_generatingNewKey = true;
 		m_oldKey = m_keyGenerator->getKey();
+		if (m_oldKey.isEmpty()) {
+			m_generatingKeys->hide();
+			SignetApplication::messageBoxError(QMessageBox::Critical, "Change Master Password",
+				"The device reported unsafe security settings, so your password was not sent to it.", this);
+			return;
+		}
 		int keyLength = SignetApplication::get()->getKeyLength();
 		m_keyGenerator->setParams(this->m_newPasswordEdit->text(), m_newHashfn, m_newSalt, keyLength);
 		m_keyGenerator->start();

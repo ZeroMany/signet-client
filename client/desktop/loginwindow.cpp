@@ -80,6 +80,14 @@ void LoginWindow::keyGenerated()
 	if (m_loggingIn) {
 		if (m_preparingLogin) {
 			m_preparingLogin = false;
+			if (m_keyGenerator->getKey().isEmpty()) {
+				m_loggingIn = false;
+				updateWidgetState();
+				SignetApplication::messageBoxError(QMessageBox::Critical, "Login",
+					"The device reported unsafe security settings, so your password was not sent to it. "
+					"If this is your own Signet, it may be faulty or tampered with.", this);
+				return;
+			}
 			updateWidgetState();
 			ButtonWaitWidget *w = m_parent->beginButtonWait("unlock device", false);
 			connect(w, SIGNAL(timeout()), this, SLOT(buttonWaitFinished()));
