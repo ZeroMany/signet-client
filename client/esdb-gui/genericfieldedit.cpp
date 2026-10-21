@@ -8,6 +8,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QClipboard>
+#include "safeactions.h"
 #include <QApplication>
 #include <QGridLayout>
 #include <QCheckBox>
@@ -216,9 +217,7 @@ void genericFieldEdit::secretCheckStateChanged(int state)
 
 void genericFieldEdit::copyPressed()
 {
-	QClipboard *cb = QApplication::clipboard();
-	QString text = toString();
-	cb->setText(text);
+	SafeActions::copySecret(toString());
 }
 
 void genericFieldEdit::deletePressed()

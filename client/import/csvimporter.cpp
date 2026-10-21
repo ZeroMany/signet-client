@@ -104,10 +104,28 @@ void CSVImporter::start()
 
 				if (!zipInnerFileInfo.suffix().compare("csv", Qt::CaseInsensitive) ||
 					!zipInnerFileInfo.suffix().compare("txt", Qt::CaseInsensitive)) {
-					unzOpenCurrentFile(unzFile);
-					QByteArray contents(finfo.uncompressed_size, 0);
-					unzReadCurrentFile(unzFile, contents.data(), finfo.uncompressed_size);
-					unzCloseCurrentFile(unzFile);
+					// The size comes from the zip file, so check it before
+					// trusting it: a file claiming a huge size could
+					// otherwise overflow the buffer.
+					const uLong maxCsvSize = 50 * 1024 * 1024;
+					QByteArray contents;
+					bool readOk = finfo.uncompressed_size <= maxCsvSize &&
+						unzOpenCurrentFile(unzFile) == UNZ_OK;
+					if (readOk) {
+						contents.resize(static_cast<int>(finfo.uncompressed_size));
+						int n = contents.size() ?
+							unzReadCurrentFile(unzFile, contents.data(), static_cast<unsigned>(contents.size())) : 0;
+						readOk = (unzCloseCurrentFile(unzFile) == UNZ_OK) && n == contents.size();
+					}
+					if (!readOk) {
+						unzClose(unzFile);
+						SignetApplication::messageBoxError(QMessageBox::Warning,
+								"CSV Import",
+								"A file in the zip is damaged or too large (over 50 MB)",
+								m_parent);
+						done(false);
+						return;
+					}
 
 					QtCSV::Reader reader;
 					QBuffer buffer(&contents);

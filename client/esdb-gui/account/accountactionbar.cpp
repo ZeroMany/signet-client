@@ -8,6 +8,7 @@
 #include <QPushButton>
 #include <QDesktopServices>
 #include <QClipboard>
+#include "safeactions.h"
 #include <QMenu>
 #include <QApplication>
 
@@ -308,8 +309,7 @@ bool AccountActionBar::copyAccountData(account *acct, bool username, bool passwo
 		}
 		s.append(acct->password);
 	}
-	QClipboard *clipboard = QApplication::clipboard();
-	clipboard->setText(s);
+	SafeActions::copySecret(s);
     return true;
 }
 

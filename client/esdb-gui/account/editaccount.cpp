@@ -8,6 +8,7 @@
 #include <QCheckBox>
 #include <QUrl>
 #include <QDesktopServices>
+#include "safeactions.h"
 #include <QCloseEvent>
 #include <passwordedit.h>
 
@@ -115,12 +116,7 @@ void EditAccount::accountNameEdited()
 
 void EditAccount::browseUrl()
 {
-	QUrl url(m_urlField->text());
-	QString scheme = url.scheme();
-	if (!scheme.size()) {
-		url.setScheme("HTTP");
-	}
-	QDesktopServices::openUrl(url);
+	SafeActions::openWebsite(m_urlField->text(), this);
 }
 
 void EditAccount::setAccountValues()

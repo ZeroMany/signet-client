@@ -226,6 +226,7 @@ public:
 		m_DBFormat = DBFormat;
 	}
 
+	// Leaves key empty if the settings are unsafe or scrypt fails.
 	static void generateKey(const QString &password, QByteArray &key, const QByteArray &hashfn, const QByteArray &salt, int keyLength);
 	void setAsyncListener(SignetAsyncListener *l);
 signals:

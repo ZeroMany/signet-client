@@ -8,6 +8,7 @@
 #include <QString>
 #include <QBoxLayout>
 #include <QDesktopServices>
+#include "safeactions.h"
 
 EsdbActionBar::EsdbActionBar(LoggedInWidget *parent, QString typeName, bool writeEnabled, bool typeEnabled) : QWidget(parent),
 	m_parent(parent),
@@ -137,10 +138,6 @@ void EsdbActionBar::selectEntry(esdbEntry *entry)
 void EsdbActionBar::browseUrl(esdbEntry *entry)
 {
 	if (entry) {
-		QUrl url(entry->getUrl());
-		if (!url.scheme().size()) {
-			url.setScheme("HTTP");
-		}
-		QDesktopServices::openUrl(url);
+		SafeActions::openWebsite(entry->getUrl(), this);
 	}
 }

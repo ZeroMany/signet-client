@@ -1,3 +1,4 @@
+#include "safeactions.h"
 #include "signetapplication.h"
 
 #include "crypto/Crypto.h"
@@ -74,6 +75,7 @@ int main(int argc, char **argv)
 
 	app->init(startInTray);
 	app->exec();
+	SafeActions::clearClipboard();
 
 	signetdev_deinitialize_api();
 
