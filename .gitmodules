@@ -1,6 +1,6 @@
 [submodule "signet-base"]
 	path = signet-base
-	url = https://github.com/nthdimtech/signet-base.git
+	url = https://github.com/ZeroMany/signet-base.git
 [submodule "keepassx"]
 	path = keepassx
 	url = https://github.com/nthdimtech/keepassx.git
