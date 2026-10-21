@@ -202,6 +202,9 @@ void ChangeMasterPassword::signetdevCmdResp(signetdevCmdRespInfo info)
 		return;
 	}
 	m_signetdevCmdToken = -1;
+	m_oldKey.fill(0);
+	m_newKey.fill(0);
+	m_keyGenerator->clearSecrets();
 	if (m_buttonDialog) {
 		m_buttonDialog->done(QMessageBox::Ok);
 		m_buttonDialog->deleteLater();

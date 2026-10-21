@@ -152,6 +152,7 @@ void LoginWindow::signetdevCmdResp(signetdevCmdRespInfo info)
 	int resp_code = info.resp_code;
 
 	m_parent->endButtonWait();
+	m_keyGenerator->clearSecrets();
 
 	m_loggingIn = false;
 	m_preparingLogin = false;
@@ -159,6 +160,7 @@ void LoginWindow::signetdevCmdResp(signetdevCmdRespInfo info)
 
 	switch (resp_code) {
 	case OKAY:
+		m_passwordInput->setText("");
 		emit enterDeviceState(SignetApplication::STATE_LOGGED_IN_LOADING_ACCOUNTS);
 		break;
 	case BAD_PASSWORD:

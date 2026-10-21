@@ -122,6 +122,15 @@ SettingsDialog::SettingsDialog(MainWindow *mainWindow, bool initial) :
 	iconPackLayout->addWidget(m_removeIconPackButton);
 	updateIconPackInfo();
 
+	m_autoLockMinutes = new QSpinBox();
+	m_autoLockMinutes->setRange(0, 240);
+	m_autoLockMinutes->setSuffix(" minutes");
+	m_autoLockMinutes->setSpecialValueText("Never");
+	m_autoLockMinutes->setValue(m_settings->autoLockMinutes);
+	QHBoxLayout *autoLockLayout = new QHBoxLayout();
+	autoLockLayout->addWidget(new genericText("Log out after not using the app for"));
+	autoLockLayout->addWidget(m_autoLockMinutes);
+
 #ifndef Q_OS_MACOS
 	m_minimizeToTray = new QCheckBox("&Minimize window to system tray");
 	m_minimizeToTray->setChecked(m_settings->minimizeToTray);
@@ -141,6 +150,7 @@ SettingsDialog::SettingsDialog(MainWindow *mainWindow, bool initial) :
 	topLayout->addWidget(m_keyboardLayoutUnconfiguredWarning);
 	topLayout->addLayout(keyboardLayoutConfigurationLayout);
 	topLayout->addLayout(iconPackLayout);
+	topLayout->addLayout(autoLockLayout);
 #ifndef Q_OS_MACOS
 	topLayout->addWidget(m_minimizeToTray);
 #endif
@@ -212,6 +222,7 @@ void SettingsDialog::okayPressed()
 	m_settings->removableBackupInterval = m_removableBackupInterval->value();
 	m_settings->activeKeyboardLayout = m_activeKeyboardLayout;
 	m_settings->keyboardLayouts = m_keyboardLayouts;
+	m_settings->autoLockMinutes = m_autoLockMinutes->value();
 #ifndef Q_OS_MACOS
 	m_settings->minimizeToTray = m_minimizeToTray->isChecked();
 #endif

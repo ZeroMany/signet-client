@@ -51,7 +51,7 @@ EditEntryDialog::EditEntryDialog(QString typeName, esdbEntry *ent, QWidget *pare
 	m_entry(ent)
 {
 	setWindowModality(Qt::WindowModal);
-	setWindowTitle("Edit " + ent->getTitle());
+	setWindowTitle("Edit entry");
 	m_isNew = false;
 }
 
@@ -257,7 +257,7 @@ void EditEntryDialog::edited()
 void EditEntryDialog::entryNameEdited()
 {
 	if (!m_isNew) {
-		setWindowTitle("Edit " + entryName());
+		setWindowTitle("Edit entry");
 	}
 }
 

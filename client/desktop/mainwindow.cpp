@@ -150,6 +150,9 @@ MainWindow::MainWindow(QWidget *parent) :
 		this, SLOT(connectionError()));
 
 	QObject::connect(&m_resetTimer, SIGNAL(timeout()), this, SLOT(resetTimer()));
+	m_autoLockTimer.setSingleShot(true);
+	QObject::connect(&m_autoLockTimer, SIGNAL(timeout()), this, SLOT(autoLockTimeout()));
+	qApp->installEventFilter(this);
 
 	QObject::connect(&m_connectingTimer, SIGNAL(timeout()), this, SLOT(connectingTimer()));
 	QMenuBar *bar = new QMenuBar();
@@ -823,6 +826,47 @@ MainWindow::~MainWindow()
 	delete m_bookmarkTypeModule;
 }
 
+void MainWindow::restartAutoLockTimer()
+{
+	int minutes = m_settings.autoLockMinutes;
+	if (m_deviceState == SignetApplication::STATE_LOGGED_IN && minutes > 0) {
+		m_autoLockTimer.start(minutes * 60 * 1000);
+	} else {
+		m_autoLockTimer.stop();
+	}
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+	// Any keyboard or mouse use in the app counts as activity.
+	switch (event->type()) {
+	case QEvent::KeyPress:
+	case QEvent::MouseButtonPress:
+	case QEvent::MouseMove:
+	case QEvent::Wheel:
+		if (m_autoLockTimer.isActive()) {
+			restartAutoLockTimer();
+		}
+		break;
+	default:
+		break;
+	}
+	return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::autoLockTimeout()
+{
+	if (m_deviceState != SignetApplication::STATE_LOGGED_IN) {
+		return;
+	}
+	// Don't interrupt something waiting for a button press on the device.
+	if (m_buttonWaitWidget || m_signetdevCmdToken != -1) {
+		m_autoLockTimer.start(60 * 1000);
+		return;
+	}
+	logoutUi();
+}
+
 void MainWindow::logoutUi()
 {
 	if (m_deviceState == SignetApplication::STATE_LOGGED_IN) {
@@ -895,6 +939,7 @@ void MainWindow::saveSettings()
 	obj.insert("activeKeyboardLayout", QJsonValue(m_settings.activeKeyboardLayout));
 #ifndef Q_OS_MACOS
 	obj.insert("minimizeToTray", QJsonValue(m_settings.minimizeToTray));
+	obj.insert("autoLockMinutes", QJsonValue(m_settings.autoLockMinutes));
 #endif
 	obj.insert("windowGeometry", QJsonValue(QLatin1String(m_settings.windowGeometry.toBase64())));
 
@@ -1159,6 +1204,13 @@ void MainWindow::loadSettings()
 		m_settings.lastRemoveableBackup = QDateTime();
 	}
 
+	QJsonValue autoLockMinutes = obj.value("autoLockMinutes");
+	if (autoLockMinutes.isDouble()) {
+		m_settings.autoLockMinutes = qBound(0, autoLockMinutes.toInt(), 240);
+	} else {
+		m_settings.autoLockMinutes = 10;
+	}
+
 #ifdef Q_OS_MACOS
 	m_settings.minimizeToTray = false;
 #else
@@ -1362,6 +1414,7 @@ void MainWindow::enterDeviceState(int state)
 	}
 
 	m_deviceState = static_cast<enum SignetApplication::device_state>(state);
+	restartAutoLockTimer();
 
 	switch (m_deviceState) {
 	case SignetApplication::STATE_DISCONNECTING: {
@@ -1661,6 +1714,7 @@ void MainWindow::settingDialogFinished(int rc)
 {
 	if (!rc) {
 		saveSettings();
+		restartAutoLockTimer();
 	}
 }
 
@@ -1806,6 +1860,16 @@ void MainWindow::backupDeviceUi()
 
 void MainWindow::exportCSVUi()
 {
+	QMessageBox warning(QMessageBox::Warning, "Export to CSV archive",
+		"The export file will contain all your passwords in plain, unencrypted text. "
+		"Anyone who can open the file can read them.\n\n"
+		"Save it somewhere private (not a folder synced to OneDrive, iCloud or similar) "
+		"and delete it as soon as you no longer need it.",
+		QMessageBox::Ok | QMessageBox::Cancel, this);
+	warning.setDefaultButton(QMessageBox::Cancel);
+	if (warning.exec() != QMessageBox::Ok) {
+		return;
+	}
 	QFileDialog *fd = new QFileDialog(this, "Export device to CSV archive");
 	QStringList filters;
 	filters.append("*.zip");
@@ -1828,7 +1892,15 @@ void MainWindow::exportCSVUi()
 	fd->deleteLater();
 	if (sl.empty())
 		return;
-	m_backupZipFile = zipOpen(sl.first().toLatin1().data(), APPEND_STATUS_CREATE);
+	{
+		// Create the file first so only this user can read it.
+		QFile exportFile(sl.first());
+		if (exportFile.open(QFile::WriteOnly | QFile::Truncate)) {
+			exportFile.setPermissions(QFile::ReadOwner | QFile::WriteOwner);
+			exportFile.close();
+		}
+	}
+	m_backupZipFile = zipOpen(QFile::encodeName(sl.first()).constData(), APPEND_STATUS_CREATE);
 	if (!m_backupZipFile) {
 		SignetApplication::messageBoxError(QMessageBox::Warning, "Export to CSV archive", "Failed to create CSV archive", this);
 		return;

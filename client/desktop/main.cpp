@@ -7,8 +7,46 @@
 #include <QCommandLineParser>
 #include <QPushButton>
 
+#if defined(Q_OS_LINUX)
+#include <sys/prctl.h>
+#include <sys/resource.h>
+#elif defined(Q_OS_MACOS)
+#include <sys/resource.h>
+#elif defined(Q_OS_WIN)
+#include <windows.h>
+#endif
+
+// If the app crashes, don't let the system save or send a copy of its
+// memory, which can hold passwords from the device.
+static void disableCrashDumps()
+{
+#if defined(Q_OS_LINUX) || defined(Q_OS_MACOS)
+	struct rlimit limit;
+	limit.rlim_cur = 0;
+	limit.rlim_max = 0;
+	setrlimit(RLIMIT_CORE, &limit);
+#endif
+#if defined(Q_OS_LINUX)
+	// Also stops other programs of the same user from reading our memory
+	// with a debugger.
+	prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
+#endif
+#if defined(Q_OS_WIN)
+	SetErrorMode(GetErrorMode() | SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+	// Keep the heap (where passwords live) out of Windows Error Reporting
+	// dumps. Looked up at run time so the build doesn't depend on werapi.h.
+	typedef HRESULT (WINAPI *WerSetFlagsFn)(DWORD);
+	HMODULE kernel = GetModuleHandleW(L"kernel32.dll");
+	WerSetFlagsFn werSetFlags = kernel ? (WerSetFlagsFn)GetProcAddress(kernel, "WerSetFlags") : nullptr;
+	if (werSetFlags) {
+		werSetFlags(0x00000001 /* WER_FAULT_REPORTING_FLAG_NOHEAP */);
+	}
+#endif
+}
+
 int main(int argc, char **argv)
 {
+	disableCrashDumps();
 #if QT_VERSION >= 0x00050600
 	QCoreApplication::setAttribute(Qt::AA_DisableHighDpiScaling);
 #endif

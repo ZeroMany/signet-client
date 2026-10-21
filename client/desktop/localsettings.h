@@ -25,6 +25,8 @@ struct localSettings {
 	QString activeKeyboardLayout;
 	QByteArray windowGeometry;
 	bool minimizeToTray;
+	// Log out after this many minutes without using the app (0 = never)
+	int autoLockMinutes;
 };
 
 #endif // LOCALSETTINGS_H
