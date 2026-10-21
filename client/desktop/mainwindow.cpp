@@ -1208,7 +1208,8 @@ void MainWindow::loadSettings()
 				QString keyS = entry.first().toString();
 				if (keyS.size() != 1)
 					continue;
-				signetdev_key key;
+				// Start from all zeros so fields not set below aren't random.
+				signetdev_key key = {};
 				key.key = keyS.at(0).unicode();
 
 				int codes[4];
