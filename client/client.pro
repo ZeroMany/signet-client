@@ -211,6 +211,7 @@ HEADERS +=  esdb-gui/esdbmodel.h \
 #
 
 SOURCES += signetapplication.cpp \
+        hwkey/loginkey.cpp \
         keygeneratorthread.cpp
 
 HEADERS  += signetapplication.h \
@@ -304,6 +305,8 @@ SOURCES += desktop/main.cpp \
         desktop/buttonwaitwidget.cpp \
         desktop/searchfilteredit.cpp \
         desktop/loginwindow.cpp \
+        desktop/touchprompt.cpp \
+        desktop/hardwarekeydialog.cpp \
 	desktop/cleartextpasswordeditor.cpp \
 	desktop/cleartextpasswordselector.cpp \
 	desktop/datatypelistmodel.cpp
@@ -326,6 +329,8 @@ HEADERS +=  desktop/mainwindow.h \
         desktop/buttonwaitwidget.h \
         desktop/searchfilteredit.h \
         desktop/loginwindow.h \
+        desktop/touchprompt.h \
+        desktop/hardwarekeydialog.h \
 	desktop/cleartextpasswordeditor.h \
 	desktop/cleartextpasswordselector.h \
 	desktop/datatypelistmodel.h
@@ -451,6 +456,8 @@ HEADERS += ../keepassx/src/core/AutoTypeAssociations.h \
 win32 {
 RC_FILE = signet.rc
 }
+
+include(hwkey/hwkey.pri)
 
 }
 

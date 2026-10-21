@@ -1,4 +1,5 @@
 #include "signetapplication.h"
+#include "hwkey/loginkey.h"
 
 #ifndef Q_OS_ANDROID
 #include "desktop/mainwindow.h"
@@ -196,46 +197,13 @@ void SignetApplication::getFirmwareVersion(int &major, int &minor, int &step)
 
 void SignetApplication::generateKey(const QString &password, QByteArray &key, const QByteArray &hashfn, const QByteArray &salt, int keyLength)
 {
-	QByteArray s = password.toUtf8();
-	key.resize(keyLength);
-	memset(key.data(), 0, (size_t)key.length());
-
-	int fn = hashfn.at(0);
-
-	switch(fn) {
-	case 0: {
-		unsigned int N = DEFAULT_SCRYPT_N_VALUE;
-		unsigned int r = DEFAULT_SCRYPT_R_VALUE;
-		unsigned int p = DEFAULT_SCRIPT_P_VALUE;
-		QByteArray actual_salt("rand", 4);
-		generateScryptKey(password, key, actual_salt, N, r, p);
+	// A Signet that needs a YubiKey must never be sent a password-only
+	// key. Those logins go through HwKey::LoginKeyBuilder instead.
+	if (!hashfn.isEmpty() && (unsigned char)hashfn.at(0) == HwKey::HASHFN_SCRYPT_YUBIKEY) {
+		HwKey::wipe(key);
+		return;
 	}
-	break;
-	case 1: {
-		// The device tells us how much work the scrypt step should take.
-		// Only accept settings in a safe range: a fake or tampered device
-		// could otherwise ask for almost no work, making the master
-		// password easy to crack from what we send it, or for so much
-		// that the computer runs out of memory.
-		if (hashfn.size() < 5 || salt.size() < 16) {
-			key.clear();
-			break;
-		}
-		unsigned int log2N = (u8)hashfn.at(1);
-		unsigned int r = ((unsigned int)(u8)hashfn.at(2)) + (((unsigned int)(u8)hashfn.at(3)) << 8);
-		unsigned int p = (u8)hashfn.at(4);
-		if (log2N < 12 || log2N > 20 || r < 8 || r > 32 || p < 1 || p > 16) {
-			key.clear();
-			break;
-		}
-		unsigned int N = 1u << log2N;
-		generateScryptKey(password, key, salt, N, r, p);
-	}
-	break;
-	default:
-		key.clear();
-		break;
-	}
+	HwKey::passwordKey(password, hashfn, salt, keyLength, key);
 }
 
 void SignetApplication::deviceEventS(void *cb_param, int event_type, const void *data, int data_len)
