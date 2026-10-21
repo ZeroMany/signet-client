@@ -40,11 +40,18 @@ struct block {
 	void writeLongString(const QString &str, bool masked);
 	QByteArray data;
 	QByteArray mask;
+	// Set when a read would have gone past the end of 'data'. The read
+	// returns zero / an empty string instead, and the caller should treat
+	// the whole entry as unreadable. Cleared by beginRead().
+	bool readError;
 	block()
 	{
 		index = 0;
+		readError = false;
 	}
 	size_t dataRemaining() const;
+private:
+	bool canRead(int n);
 };
 
 struct esdbEntry_1 {

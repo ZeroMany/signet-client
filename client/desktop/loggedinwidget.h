@@ -9,6 +9,7 @@
 #include <QUrl>
 #include <QMap>
 #include <QVector>
+#include <QSet>
 #include <QIcon>
 
 class MainWindow;
@@ -101,6 +102,11 @@ class LoggedInWidget : public QWidget
 
 	bool m_populating;
 	int m_populatingCantRead;
+	int m_populatingDamaged;
+	// Ids of entries on the device that we could not read (damaged or from
+	// a newer client). They are never offered as "free" ids, so creating a
+	// new entry can't overwrite them.
+	QSet<int> m_unreadableIds;
 	SearchListbox *m_searchListbox;
 	QStackedWidget *m_actionBarStack;
 

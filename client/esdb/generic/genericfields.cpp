@@ -8,6 +8,9 @@ void genericFields_1::fromBlock(block *blk)
 	numFields = blk->readU8();
 	m_fields.clear();
 	for (int i = 0; i < numFields; i++) {
+		if (blk->readError) {
+			break;
+		}
 		genericField fld;
 		blk->readString(fld.name);
 		blk->readString(fld.value);
@@ -22,6 +25,9 @@ void genericFields_2::fromBlock(block *blk)
 	numFields = blk->readU8();
 	m_fields.clear();
 	for (int i = 0; i < numFields; i++) {
+		if (blk->readError) {
+			break;
+		}
 		genericField fld;
 		blk->readString(fld.name);
 		blk->readString(fld.type);
@@ -38,6 +44,9 @@ void genericFields::fromBlock(block *blk)
 	u8 numFields = blk->readU8();
 	m_fields.clear();
 	for (int i = 0; i < numFields; i++) {
+		if (blk->readError) {
+			break;
+		}
 		genericField fld;
 		blk->readString(fld.name);
 		blk->readString(fld.type);
