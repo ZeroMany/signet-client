@@ -39,6 +39,16 @@ public:
 	{
 		m_fields.clear();
 	}
+	// Overwrites every field's name, type and value with zeros. These are
+	// all hidden by the device until its button is pressed.
+	void clearSecrets()
+	{
+		for (genericField &f : m_fields) {
+			f.name.fill(QChar(0));
+			f.type.fill(QChar(0));
+			f.value.fill(QChar(0));
+		}
+	}
 	void toBlock(block *blk) const;
 	int fieldCount() const
 	{

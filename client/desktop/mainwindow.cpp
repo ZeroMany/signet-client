@@ -613,8 +613,13 @@ void MainWindow::signetdevReadAllUIdsResp(signetdevCmdRespInfo info, int id, QBy
 					int index = exportType.m_exportFieldMap[field.name];
 					csvEntry[index] = field.value;
 				}
+				// This copy is only needed for the export, so wipe and free it.
+				entry->clearSecrets();
+				delete entry;
 			}
 		}
+		blk->data.fill(0);
+		delete blk;
 	}
 	if (!info.messages_remaining) {
 		QMap<QString, exportType>::iterator exportType;
@@ -651,10 +656,21 @@ void MainWindow::signetdevReadAllUIdsResp(signetdevCmdRespInfo info, int id, QBy
 			QByteArray outUTF8 = outStr.toUtf8();
 			zipWriteInFileInZip(m_backupZipFile, outUTF8.data() , outUTF8.size());
 			zipCloseFileInZip(m_backupZipFile);
+			outUTF8.fill(0);
+			outStr.fill(QChar(0));
 
 		}
 		zipClose(m_backupZipFile, NULL);
 		m_backupZipFile = nullptr;
+		// Wipe the exported passwords from memory now the file is written.
+		for (auto x = m_exportData.begin(); x != m_exportData.end(); x++) {
+			for (QVector<QString> &row : x.value().m_data) {
+				for (QString &value : row) {
+					value.fill(QChar(0));
+				}
+			}
+		}
+		m_exportData.clear();
 		QMessageBox *box = new QMessageBox(QMessageBox::Information,
 						   "Export database to CSV",
 						   "Export successful",

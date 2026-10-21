@@ -107,6 +107,11 @@ struct generic : public esdbEntry {
 
 	void getFields(QVector<genericField> &fields_) const;
 
+	void clearSecrets() override
+	{
+		fields.clearSecrets();
+	}
+
 	~generic() {}
 };
 

@@ -35,6 +35,8 @@ EditAccount::EditAccount(int id, QString entryName, QStringList groupList, QWidg
 EditAccount::EditAccount(account *acct, QStringList groupList, QWidget *parent) :
 	EditEntryDialog("Account", acct, parent),
         m_acct(acct),
+        m_savedPassword(acct->password),
+        m_savedFields(acct->fields),
         m_groupList(groupList)
 {
 	setup(acct->acctName);
@@ -124,10 +126,10 @@ void EditAccount::setAccountValues()
 	m_usernameField->setText(m_acct->userName);
 	m_accountNameEdit->setText(m_acct->acctName);
 	m_emailField->setText(m_acct->email);
-	m_passwordEdit->setPassword(m_acct->password);
+	m_passwordEdit->setPassword(m_savedPassword);
 	m_urlField->setText(m_acct->url);
 	m_groupField->setText(m_acct->path);
-	m_genericFieldsEditor->loadFields(m_acct->fields);
+	m_genericFieldsEditor->loadFields(m_savedFields);
 }
 
 QString EditAccount::entryName()
@@ -138,14 +140,21 @@ QString EditAccount::entryName()
 void EditAccount::applyChanges(esdbEntry *ent)
 {
 	account *acct = static_cast<account *>(ent);
+	if (acct == m_acct) {
+		// The entry's own copy may already have been wiped from memory.
+		acct->fields = m_savedFields;
+	}
 	acct->acctName = m_accountNameEdit->text();
 	acct->userName = m_usernameField->text();
 	acct->password = m_passwordEdit->password();
 	acct->url = m_urlField->text();
 	acct->email = m_emailField->text();
 	acct->path = m_groupField->text();
-	acct->fields = acct->fields;
 	m_genericFieldsEditor->saveFields(acct->fields);
+	if (acct == m_acct) {
+		m_savedPassword = acct->password;
+		m_savedFields = acct->fields;
+	}
 }
 
 void EditAccount::usernameEditingFinished()

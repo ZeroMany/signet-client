@@ -4,6 +4,7 @@
 #include <QDialog>
 #include "signetapplication.h"
 #include "editentrydialog.h"
+#include "genericfields.h"
 
 class QLineEdit;
 class QPushButton;
@@ -31,6 +32,10 @@ class EditAccount : public EditEntryDialog
 	DatabaseField *m_emailField;
 	QPushButton *m_browseUrlButton;
 	GenericFieldsEditor *m_genericFieldsEditor;
+	// Copies of the hidden values taken when the dialog opens, so "undo"
+	// still works after the app wipes them from the entry in memory.
+	QString m_savedPassword;
+	genericFields m_savedFields;
 	void setAccountValues();
 	bool toBlock(block &blk);
 	void setup(QString name);

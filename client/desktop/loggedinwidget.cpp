@@ -110,6 +110,9 @@ LoggedInWidget::LoggedInWidget(QProgressBar *loading_progress, MainWindow *mw, Q
 {
 	m_genericIcon = QIcon(":images/generic-entry.png");
 
+	m_clearSecretsTimer.setSingleShot(true);
+	connect(&m_clearSecretsTimer, SIGNAL(timeout()), this, SLOT(clearSecrets()));
+
 	m_activeTypeIndex = 0;
 
 	m_dataTypesModel = new DataTypeListModel();
@@ -370,8 +373,38 @@ void LoggedInWidget::currentTypeIndexChanged(int idx)
 	}
 }
 
+// How long an opened password stays in memory after it was read from the
+// device. Every action that needs it (copy, type, open) reads it again from
+// the device, so clearing it doesn't change what the user sees.
+static const int clearSecretsSeconds = 60;
+
+void LoggedInWidget::secretsInMemory()
+{
+	m_clearSecretsTimer.start(clearSecretsSeconds * 1000);
+}
+
+void LoggedInWidget::clearSecrets()
+{
+	// Wait if something may still be using an opened entry: a device task
+	// in progress, a button prompt, or a question box on screen.
+	if (m_idTask != ID_TASK_NONE || m_buttonWaitWidget || QApplication::activeModalWidget()) {
+		m_clearSecretsTimer.start(10 * 1000);
+		return;
+	}
+	for (esdbEntry *entry : m_entries) {
+		if (entry) {
+			entry->clearSecrets();
+		}
+	}
+}
+
 LoggedInWidget::~LoggedInWidget()
 {
+	for (esdbEntry *entry : m_entries) {
+		if (entry) {
+			entry->clearSecrets();
+		}
+	}
 	if (m_accounts)
 		delete m_accounts;
 }
@@ -503,6 +536,7 @@ esdbTypeModule *LoggedInWidget::esdbEntryToModule(esdbEntry *entry)
 
 void LoggedInWidget::entryChanged(int id)
 {
+	secretsInMemory();
 	esdbEntry *entry = m_entries[id];
 	if (entry) {
 		entryIconCheck(entry);
@@ -858,6 +892,9 @@ void LoggedInWidget::getEntryDone(int id, int code, block *blk, bool task)
 		}
 	}
 
+	if (entry && !m_populating) {
+		secretsInMemory();
+	}
 	if (entry) {
 		if (!exists) {
 			entryIconCheck(entry);
@@ -1068,6 +1105,7 @@ void LoggedInWidget::addGenericType(genericTypeDesc *genericTypeDesc)
 void LoggedInWidget::entryCreated(QString typeName, esdbEntry *entry)
 {
 	if (entry) {
+		secretsInMemory();
 		m_searchListbox->setFilterText(QString());
 		entryIconCheck(entry);
 		m_entries[entry->id] = entry;

@@ -82,6 +82,9 @@ struct esdbEntry {
 	QIcon icon;
 	virtual void fromBlock(block *blk);
 	virtual void toBlock(block *blk) const;
+	// Overwrites the secret parts of the entry (the parts the device hides
+	// until you press its button) with zeros, keeping their length.
+	virtual void clearSecrets() {}
 	virtual ~esdbEntry();
 	esdbEntry(int id_, int type_, int revision_, int uid_, int version_);
 	esdbEntry(int id_);
