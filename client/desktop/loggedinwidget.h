@@ -11,6 +11,7 @@
 #include <QVector>
 #include <QSet>
 #include <QIcon>
+#include <QTimer>
 
 class MainWindow;
 class CommThread;
@@ -73,6 +74,11 @@ class LoggedInWidget : public QWidget
 
 	EntryIconProvider m_iconProvider;
 	QMap<int, esdbEntry *> m_entries;
+
+	// Wipes opened passwords and other hidden fields from memory a short
+	// time after they were last read from the device.
+	QTimer m_clearSecretsTimer;
+	void secretsInMemory();
 
 	struct typeData {
 		esdbTypeModule *module;
@@ -203,6 +209,8 @@ public slots:
 	void signetDevEvent(int);
 	void expanded(QModelIndex index);
 	void collapsed(QModelIndex index);
+private slots:
+	void clearSecrets();
 private:
         ButtonWaitWidget *m_buttonWaitWidget;
 	int m_socketId;

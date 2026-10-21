@@ -207,6 +207,12 @@ struct account : public esdbEntry {
 		path = p;
 	}
 
+	void clearSecrets() override
+	{
+		password.fill(QChar(0));
+		fields.clearSecrets();
+	}
+
 	~account() {}
 };
 
