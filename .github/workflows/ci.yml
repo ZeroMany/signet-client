@@ -45,6 +45,13 @@ jobs:
           export PATH=/mingw64/qt5-static/bin:$PATH
           qmake client/client.pro CONFIG+=release
           mingw32-make -j4
+      - name: Test YubiKey unlock
+        run: |
+          export PATH=/mingw64/qt5-static/bin:$PATH
+          mkdir -p build-tests && cd build-tests
+          qmake ../client/tests/hwkey/hwkey_tests.pro CONFIG+=release
+          mingw32-make -j4
+          ./release/hwkey_tests.exe
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: signet-windows
@@ -61,11 +68,18 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y qtbase5-dev qt5-qmake libqt5svg5-dev \
-            libqt5x11extras5-dev libgcrypt20-dev zlib1g-dev libx11-dev
+            libqt5x11extras5-dev libgcrypt20-dev zlib1g-dev libx11-dev \
+            libpcsclite-dev
       - name: Build
         run: |
           qmake client/client.pro CONFIG+=release
           make -j4
+      - name: Test YubiKey unlock
+        run: |
+          mkdir -p build-tests && cd build-tests
+          qmake ../client/tests/hwkey/hwkey_tests.pro CONFIG+=release
+          make -j4
+          ./hwkey_tests
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: signet-linux
@@ -95,6 +109,13 @@ jobs:
           macdeployqt signet.app
           codesign --force --deep --sign - signet.app
           ditto -c -k --keepParent signet.app signet-macos.zip
+      - name: Test YubiKey unlock
+        run: |
+          export PATH="$(brew --prefix qt@5)/bin:$PATH"
+          mkdir -p build-tests && cd build-tests
+          qmake ../client/tests/hwkey/hwkey_tests.pro CONFIG+=release
+          make -j3
+          ./hwkey_tests
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: signet-macos

@@ -4,7 +4,6 @@
 #include <QDialog>
 #include <QString>
 
-#include "keygeneratorthread.h"
 #include "signetapplication.h"
 
 class CommThread;
@@ -14,6 +13,9 @@ class ButtonWaitDialog;
 class QPushButton;
 struct signetdevCmdRespInfo;
 class QSpinBox;
+namespace HwKey {
+class Rekey;
+}
 
 class ChangeMasterPassword : public QDialog
 {
@@ -26,16 +28,13 @@ class ChangeMasterPassword : public QDialog
 	QLineEdit *m_newPasswordRepeatEdit;
 	ButtonWaitDialog *m_buttonDialog;
 	QPushButton *m_changePasswordBtn;
-	KeyGeneratorThread *m_keyGenerator;
-	bool m_generatingOldKey;
-	bool m_generatingNewKey;
-	QByteArray m_oldKey;
-	QByteArray m_newKey;
+	HwKey::Rekey *m_rekey;
 	QByteArray m_newHashfn;
 	QByteArray m_newSalt;
 	int m_signetdevCmdToken;
 	QLabel *m_securityLevelComment;
 	QSpinBox *m_authSecurityLevel;
+	void setInputsEnabled(bool enabled);
 public:
 	ChangeMasterPassword(QWidget *parent = 0);
 	virtual ~ChangeMasterPassword();
@@ -43,7 +42,7 @@ signals:
 	void abort();
 public slots:
 	void signetdevCmdResp(signetdevCmdRespInfo info);
-	void keyGenerated();
+	void keysReady(int status);
 	void changePasswordFinished(int);
 	void changePasswordUi();
 	void newPasswordTextEdited(QString);
