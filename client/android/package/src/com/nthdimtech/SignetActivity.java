@@ -1,208 +1,266 @@
 package com.nthdimtech;
 
-import android.os.Bundle;
-import android.os.Handler;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.Context;
-import android.app.PendingIntent;
+import android.hardware.usb.UsbConstants;
 import android.hardware.usb.UsbDevice;
-import android.hardware.usb.UsbManager;
+import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
-import android.hardware.usb.UsbDeviceConnection;
-import android.hardware.usb.UsbConstants;
-import android.content.BroadcastReceiver;
+import android.hardware.usb.UsbManager;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
 import android.util.Log;
-import android.app.Application;
-import android.app.Service;
-import android.content.ServiceConnection;
-import android.os.IBinder;
-import android.os.Binder;
-import java.util.HashMap;
-import java.util.Iterator;
-import android.content.ComponentName;
-
-//import android.support.v4.content.LocalBroadcastManager;
-//import android.support.v4.app.ActivityCompat;
-//import android.support.v4.content.ContextCompat;
-import android.content.pm.PackageManager;
-import android.Manifest;
 
 import org.qtproject.qt5.android.bindings.QtActivity;
-import com.nthdimtech.SignetService;
 
+/*
+ * The app's main screen. Qt draws everything; this class only adds USB
+ * handling. Android apps can't open USB devices directly, so we ask the
+ * user for permission, open the Signet here and pass its connection to
+ * the C code (client/android/jni/signetactivity.cpp).
+ */
 public class SignetActivity extends QtActivity {
-	private static SignetActivity mInstance;
-	private String TAG = "SIGNET_ACTIVITY";
+	private static final String TAG = "SIGNET_ACTIVITY";
 	private static final String ACTION_USB_PERMISSION = "com.nthdimtech.SignetClient.USB_PERMISSION";
-	private PendingIntent mPermissionIntent;
+
+	// Original Signet
+	private static final int SIGNET_VID = 0x5E2A;
+	private static final int SIGNET_PID = 0x0001;
+	// Signet HC
+	private static final int SIGNET_HC_VID = 0x1209;
+	private static final int SIGNET_HC_PID = 0xDF11;
+	// The Signet HC's command interface is interface number 1
+	private static final int SIGNET_HC_HID_INTERFACE = 1;
+
+	// PendingIntent.FLAG_MUTABLE (Android 12+). The system adds the
+	// device to the permission reply, so the intent must stay mutable.
+	private static final int FLAG_MUTABLE = 0x02000000;
+
 	private UsbManager mManager;
+	private PendingIntent mPermissionIntent;
+	private Handler mHandler;
+
+	private UsbDevice mDevice;
 	private UsbDeviceConnection mConnection;
-	private UsbInterface mSignetHidInterface;
-	private UsbEndpoint mSignetHidOutEp;
-	private UsbEndpoint mSignetHidInEp;
-	private HashMap<Integer, Integer> mConnectedDevices;
-	private static final int VID=0x5E2A;
-	private static final int PID=1;
-	private boolean mSignetHasKeyboard;
+	private UsbInterface mHidInterface;
+	private int mFd = -1;
 
-	private static Context mContext;
+	private static native boolean nativeReady();
+	private static native void notifyDeviceAttached(int fd, int inEp, int outEp, boolean hasKeyboard, boolean isHC);
+	private static native void notifyDeviceDetached(int fd);
 
-	public SignetActivity () {
-		mInstance = this;
-		mConnectedDevices = new HashMap<Integer, Integer>();
+	private static boolean isSignet(UsbDevice device) {
+		return isOriginal(device) || isHC(device);
 	}
 
-        private void deviceReady(UsbDevice device) {
-		mConnection = mManager.openDevice(device);
-		if (mConnection != null) {
-			mConnection.claimInterface(mSignetHidInterface, true);
-			mConnectedDevices.put(device.getDeviceId(), mConnection.getFileDescriptor());
-			int fd = mConnection.getFileDescriptor();
-			Log.d(TAG,"deviceReady(): FD " + fd + " Out endpoint " + mSignetHidInEp.getEndpointNumber() + ", IN Endpoint " + mSignetHidOutEp.getEndpointNumber()
-			        + ", " + (mSignetHasKeyboard ? "Has keyboard" : "No keyboard"));
-			notifyDeviceAttached(fd, mSignetHidInEp.getEndpointNumber(), mSignetHidOutEp.getEndpointNumber(), mSignetHasKeyboard);
+	private static boolean isOriginal(UsbDevice device) {
+		return device.getVendorId() == SIGNET_VID && device.getProductId() == SIGNET_PID;
+	}
+
+	private static boolean isHC(UsbDevice device) {
+		return device.getVendorId() == SIGNET_HC_VID && device.getProductId() == SIGNET_HC_PID;
+	}
+
+	private final BroadcastReceiver mUsbReceiver = new BroadcastReceiver() {
+		@Override
+		public void onReceive(Context context, Intent intent) {
+			String action = intent.getAction();
+			UsbDevice device = (UsbDevice) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+			if (device == null || !isSignet(device)) {
+				return;
+			}
+			if (ACTION_USB_PERMISSION.equals(action)) {
+				if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+					Log.d(TAG, "USB permission granted");
+					openDevice(device);
+				} else {
+					Log.d(TAG, "USB permission denied");
+				}
+			} else if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
+				Log.d(TAG, "Signet attached");
+				useDevice(device);
+			} else if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
+				Log.d(TAG, "Signet detached");
+				if (mDevice != null && mDevice.getDeviceId() == device.getDeviceId()) {
+					closeDevice();
+				}
+			}
+		}
+	};
+
+	@Override
+	public void onCreate(Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+		mHandler = new Handler();
+		mManager = (UsbManager) getSystemService(Context.USB_SERVICE);
+		int flags = Build.VERSION.SDK_INT >= 31 ? FLAG_MUTABLE : 0;
+		Intent permissionIntent = new Intent(ACTION_USB_PERMISSION);
+		permissionIntent.setPackage(getPackageName());
+		mPermissionIntent = PendingIntent.getBroadcast(this, 0, permissionIntent, flags);
+		IntentFilter filter = new IntentFilter();
+		filter.addAction(ACTION_USB_PERMISSION);
+		filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
+		filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
+		registerReceiver(mUsbReceiver, filter);
+		checkForDevices();
+	}
+
+	@Override
+	public void onNewIntent(Intent intent) {
+		super.onNewIntent(intent);
+		// Plugging in a Signet while the app is open lands here.
+		if (intent != null && UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(intent.getAction())) {
+			UsbDevice device = (UsbDevice) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+			if (device != null && isSignet(device)) {
+				useDevice(device);
+			}
+		}
+	}
+
+	@Override
+	public void onDestroy() {
+		try {
+			unregisterReceiver(mUsbReceiver);
+		} catch (IllegalArgumentException e) {
+			// Not registered
+		}
+		closeDevice();
+		super.onDestroy();
+	}
+
+	// Look for a Signet that was plugged in before the app started.
+	// Waits until the C side is ready to receive it.
+	private void checkForDevices() {
+		if (!nativeReadySafe()) {
+			mHandler.postDelayed(new Runnable() {
+				@Override
+				public void run() {
+					checkForDevices();
+				}
+			}, 250);
+			return;
+		}
+		for (UsbDevice device : mManager.getDeviceList().values()) {
+			if (isSignet(device)) {
+				Log.d(TAG, "Found " + device);
+				useDevice(device);
+				return;
+			}
+		}
+	}
+
+	private boolean nativeReadySafe() {
+		try {
+			return nativeReady();
+		} catch (UnsatisfiedLinkError e) {
+			// The C++ library hasn't loaded yet
+			return false;
+		}
+	}
+
+	private void useDevice(UsbDevice device) {
+		if (mDevice != null) {
+			return;
+		}
+		if (mManager.hasPermission(device)) {
+			openDevice(device);
 		} else {
-		        Log.d(TAG, "deviceReady(): Couldn't open connection: requesting permission");
+			Log.d(TAG, "Requesting USB permission");
 			mManager.requestPermission(device, mPermissionIntent);
 		}
 	}
 
-        private final BroadcastReceiver mUsbReceiver = new BroadcastReceiver() {
-		@Override
-		public void onReceive(final Context context, final Intent intent) {
-			final String action = intent.getAction();
-			if (ACTION_USB_PERMISSION.equals(action)) {
-				Log.d(TAG, "onUsbPermission");
-				synchronized (this) {
-					final UsbDevice device = (UsbDevice) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-					if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
-						if (device != null) {
-							Log.d(TAG, "onUsbPermission: Permission granted");
-							deviceReady(device);
-						}
-					} else {
-					        Log.d(TAG, "onUsbPermission: Permission denied");
-					}
-				}
-			}
-		        if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
-				Log.d(TAG, "onDeviceConnected");
-				synchronized(this)
-				{
-					UsbDevice device = (UsbDevice)intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-					if (device != null) {
-						findHIDInterfaces(device);
-						deviceReady(device);
-					}
-				}
-			}
-		        if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
-				Log.d(TAG, "onDeviceDisconnected");
-				synchronized(this)
-				{
-					UsbDevice device = (UsbDevice)intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-					Object val = mConnectedDevices.get(device.getDeviceId());
-					if (val != null) {
-						int fd = mConnectedDevices.get(device.getDeviceId());
-						Log.d(TAG, "onDeviceDisconnected: Disconnecting device: ID " + device.getDeviceId() + ", FD " + fd);
-						notifyDeviceDetached(fd);
-						mConnectedDevices.remove(device.getDeviceId());
-					}
-				}
-			}
-
+	private void openDevice(final UsbDevice device) {
+		if (mDevice != null) {
+			return;
 		}
-	};
-
-        @Override
-	public void onCreate(Bundle savedInstanceState) {
-		super.onCreate(savedInstanceState);
-		Intent serviceIntent = new Intent(this, SignetService.class);
-		startService(serviceIntent);
-		mManager = (UsbManager) getSystemService(Context.USB_SERVICE);
-		registerReceiver(mUsbReceiver, new IntentFilter(UsbManager.ACTION_USB_DEVICE_ATTACHED));
-		registerReceiver(mUsbReceiver, new IntentFilter(UsbManager.ACTION_USB_DEVICE_DETACHED));
-		registerReceiver(mUsbReceiver, new IntentFilter(ACTION_USB_PERMISSION));
-		mPermissionIntent = PendingIntent.getBroadcast(this, 0, new Intent(ACTION_USB_PERMISSION), 0);
-		final Handler handler = new Handler();
-		handler.postDelayed(new Runnable() {
-			        @Override
-				public void run()
-				{
-					checkForDevices();
+		if (!nativeReadySafe()) {
+			mHandler.postDelayed(new Runnable() {
+				@Override
+				public void run() {
+					openDevice(device);
 				}
-			}, 1000);
-	}
-
-        private static native void notifyDeviceAttached(int fd, int inEp, int outEp, boolean hasKeyboard);
-	private static native void notifyDeviceDetached(int fd);
-
-	@Override
-	public void onDestroy() {
-		super.onDestroy();
-	}
-
-        @Override
-	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-		super.onActivityResult(requestCode, resultCode, data);
-	}
-
-        private void checkForDevices() {
-		HashMap<String, UsbDevice> deviceList = mManager.getDeviceList();
-		Iterator<UsbDevice> deviceIterator = deviceList.values().iterator();
-
-		while(deviceIterator.hasNext()) {
-			UsbDevice device = deviceIterator.next();
-			if (device.getVendorId() == VID && device.getProductId() == PID) {
-				Log.d(TAG, "checkForDevices(): Found " + device);
-				if (findHIDInterfaces(device)) {
-					Log.d(TAG, "Found the HID interface: " + mSignetHidInterface);
-					if (mManager.hasPermission(device)) {
-						Log.d(TAG, "checkForDevices() hasPermission");
-						deviceReady(device);
-					} else {
-					        Log.d(TAG, "checkForDevices() requestPermission");
-						mManager.requestPermission(device, mPermissionIntent);
-					}
-				}
-			}
+			}, 250);
+			return;
 		}
-	}
+		boolean hc = isHC(device);
+		UsbInterface hidInterface = null;
+		UsbEndpoint inEp = null;
+		UsbEndpoint outEp = null;
+		boolean hasKeyboard = false;
 
-        private boolean findHIDInterfaces(UsbDevice device) {
-		mSignetHasKeyboard = false;
-		mSignetHidInterface = null;
 		for (int i = 0; i < device.getInterfaceCount(); i++) {
-			UsbInterface tempInterface = device.getInterface(i);
-			if (mSignetHidInterface == null && tempInterface.getInterfaceClass() == UsbConstants.USB_CLASS_HID &&
-			    tempInterface.getInterfaceProtocol() == 0 &&
-			    tempInterface.getInterfaceSubclass() == 0) {
-				mSignetHidOutEp = null;
-				mSignetHidInEp = null;
-				for (int j = 0; j < tempInterface.getEndpointCount(); j++) {
-					if (tempInterface.getEndpoint(j).getDirection() == UsbConstants.USB_DIR_OUT) {
-						mSignetHidOutEp = tempInterface.getEndpoint(j);
-					} else {
-					        mSignetHidInEp = tempInterface.getEndpoint(j);
-					}
-				}
-			        if (mSignetHidOutEp != null && mSignetHidInEp != null) {
-					mSignetHidInterface = tempInterface;
-					Log.d(TAG, "findHIDInterfaces(): found HID communication interface");
+			UsbInterface intf = device.getInterface(i);
+			if (intf.getInterfaceClass() != UsbConstants.USB_CLASS_HID) {
+				continue;
+			}
+			if (intf.getInterfaceProtocol() == 1 && intf.getInterfaceSubclass() == 1) {
+				hasKeyboard = true;
+				continue;
+			}
+			if (hidInterface != null || intf.getInterfaceProtocol() != 0) {
+				continue;
+			}
+			if (hc && intf.getId() != SIGNET_HC_HID_INTERFACE) {
+				continue;
+			}
+			UsbEndpoint in = null;
+			UsbEndpoint out = null;
+			for (int j = 0; j < intf.getEndpointCount(); j++) {
+				UsbEndpoint ep = intf.getEndpoint(j);
+				if (ep.getDirection() == UsbConstants.USB_DIR_OUT) {
+					out = ep;
 				} else {
-				        mSignetHidInEp = null;
-					mSignetHidOutEp = null;
+					in = ep;
 				}
 			}
-		        if (tempInterface.getInterfaceClass() == UsbConstants.USB_CLASS_HID &&
-			    tempInterface.getInterfaceProtocol() == 1 &&
-			    tempInterface.getInterfaceSubclass() == 1) {
-				mSignetHasKeyboard = true;
-				Log.d(TAG, "findHIDInterfaces(): found HID keyboard");
+			if (in != null && out != null) {
+				hidInterface = intf;
+				inEp = in;
+				outEp = out;
 			}
 		}
-	        return mSignetHidInterface != null;
+		if (hidInterface == null) {
+			Log.d(TAG, "No Signet command interface found");
+			return;
+		}
+		UsbDeviceConnection connection = mManager.openDevice(device);
+		if (connection == null) {
+			Log.d(TAG, "Couldn't open device");
+			return;
+		}
+		if (!connection.claimInterface(hidInterface, true)) {
+			Log.d(TAG, "Couldn't claim interface");
+			connection.close();
+			return;
+		}
+		mDevice = device;
+		mConnection = connection;
+		mHidInterface = hidInterface;
+		mFd = connection.getFileDescriptor();
+		Log.d(TAG, "Opened " + (hc ? "Signet HC" : "Signet") + ", fd " + mFd);
+		notifyDeviceAttached(mFd, inEp.getEndpointNumber(), outEp.getEndpointNumber(), hasKeyboard, hc);
+	}
+
+	private void closeDevice() {
+		if (mDevice == null) {
+			return;
+		}
+		if (nativeReadySafe()) {
+			notifyDeviceDetached(mFd);
+		}
+		if (mConnection != null) {
+			mConnection.releaseInterface(mHidInterface);
+			mConnection.close();
+		}
+		mDevice = null;
+		mConnection = null;
+		mHidInterface = null;
+		mFd = -1;
 	}
 }

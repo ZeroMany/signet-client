@@ -38,11 +38,13 @@
 #include <QStorageInfo>
 #endif
 
+#ifndef SIGNET_NO_KEEPASS
 #include <format/KeePass2Reader.h>
 #include <keys/PasswordKey.h>
 #include <core/Database.h>
 #include <core/Group.h>
 #include <core/Entry.h>
+#endif
 
 #include "about.h"
 #include "loggedinwidget.h"
@@ -58,11 +60,13 @@
 
 #include "signetapplication.h"
 #include "settingsdialog.h"
-#include "import/keepassunlockdialog.h"
 #include "import/databaseimportcontroller.h"
+#ifndef SIGNET_NO_KEEPASS
+#include "import/keepassunlockdialog.h"
 #include "import/keepassimporter.h"
+#endif
 
-#ifdef Q_OS_UNIX
+#ifdef SIGNET_PASS_IMPORT
 #include "import/passimporter.h"
 #endif
 
@@ -165,11 +169,13 @@ MainWindow::MainWindow(QWidget *parent) :
 	m_importMenu = m_fileMenu->addMenu("&Import");
 	m_importMenu->setVisible(false);
 
+#ifndef SIGNET_NO_KEEPASS
 	m_importKeePassAction = m_importMenu->addAction("&KeePass 2.x Database");
 	connect(m_importKeePassAction, SIGNAL(triggered(bool)),
 		this, SLOT(importKeePassUI()));
+#endif
 
-#ifdef Q_OS_UNIX
+#ifdef SIGNET_PASS_IMPORT
 	m_importPassAction = m_importMenu->addAction("&Pass Database");
 	connect(m_importPassAction, SIGNAL(triggered(bool)),
 		this, SLOT(importPassUI()));
@@ -180,9 +186,12 @@ MainWindow::MainWindow(QWidget *parent) :
 	connect(m_importCSVAction, SIGNAL(triggered(bool)),
 		this, SLOT(importCSVUI()));
 
+#ifndef Q_OS_ANDROID
+	// Android apps don't minimize; the Home button does that.
 	QAction *minimize_action = m_fileMenu->addAction("Minimize &window");
 	minimize_action->setShortcut(Qt::CTRL | Qt::Key_W);
 	QObject::connect(minimize_action, SIGNAL(triggered(bool)), this, SLOT(background()));
+#endif
 
 #ifdef Q_OS_UNIX
 	QAction *quit_action = m_fileMenu->addAction("&Quit");
@@ -788,6 +797,10 @@ void MainWindow::changePasswordUi()
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+#ifdef Q_OS_ANDROID
+	// The Back button closes the app on Android; there's no tray to hide in.
+	m_quitting = true;
+#endif
 
 #ifndef Q_OS_MACOS
 	if (m_quitting) {
@@ -1641,8 +1654,10 @@ void MainWindow::enterDeviceState(int state)
 	m_exportMenu->menuAction()->setVisible(fileActionsEnabled);
 	m_settingsAction->setVisible(fileActionsEnabled);
 	m_importMenu->setDisabled(m_deviceState == SignetApplication::STATE_BOOTLOADER);
+#ifndef SIGNET_NO_KEEPASS
 	m_importKeePassAction->setEnabled(fileActionsEnabled);
-#ifdef Q_OS_UNIX
+#endif
+#ifdef SIGNET_PASS_IMPORT
 	m_importPassAction->setEnabled(fileActionsEnabled && m_passDatabaseFound);
 #endif
 	m_importCSVAction->setEnabled(fileActionsEnabled);
@@ -1871,11 +1886,13 @@ void MainWindow::startImport(DatabaseImporter *importer)
 	m_dbImportController->start();
 }
 
+#ifndef SIGNET_NO_KEEPASS
 void MainWindow::importKeePassUI()
 {
 	DatabaseImporter *importer = new KeePassImporter(this);
 	startImport(importer);
 }
+#endif
 
 #include "cleartextpasswordselector.h"
 
@@ -1896,7 +1913,7 @@ void MainWindow::signetdevReadCleartextPasswordNames(signetdevCmdRespInfo info, 
 	}
 }
 
-#ifdef Q_OS_UNIX
+#ifdef SIGNET_PASS_IMPORT
 void MainWindow::importPassUI()
 {
 	DatabaseImporter *importer = new PassImporter(this);

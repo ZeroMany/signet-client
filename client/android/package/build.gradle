@@ -1,58 +1,84 @@
+// Based on Qt 5.15's Android build template. Qt's build tool
+// (androiddeployqt) fills in the values in gradle.properties.
 buildscript {
     repositories {
-        jcenter()
+        google()
+        mavenCentral()
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:2.2.3'
+        classpath 'com.android.tools.build:gradle:3.6.0'
     }
 }
 
-allprojects {
-    repositories {
-        jcenter()
-    }
+repositories {
+    google()
+    mavenCentral()
 }
 
 apply plugin: 'com.android.application'
 
 dependencies {
-    compile fileTree(dir: 'libs', include: ['*.jar'])
-    compile "com.android.support:support-v4:19.0.+"
+    implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
 }
 
 android {
-    /*******************************************************
-     * The following variables:
-     * - androidBuildToolsVersion,
-     * - androidCompileSdkVersion
-     * - qt5AndroidDir - holds the path to qt android files
-     *                   needed to build any Qt application
-     *                   on Android.
-     *
-     * are defined in gradle.properties file. This file is
-     * updated by QtCreator and androiddeployqt tools.
-     * Changing them manually might break the compilation!
-     *******************************************************/
-
     compileSdkVersion androidCompileSdkVersion.toInteger()
 
     buildToolsVersion androidBuildToolsVersion
 
     sourceSets {
         main {
-	    manifest.srcFile 'AndroidManifest.xml'
-	    java.srcDirs = [qt5AndroidDir + '/src', 'src', 'java']
-	    aidl.srcDirs = [qt5AndroidDir + '/src', 'src', 'aidl']
-	    res.srcDirs = [qt5AndroidDir + '/res', 'res']
-	    resources.srcDirs = ['src']
-	    renderscript.srcDirs = ['src']
-	    assets.srcDirs = ['assets']
-	    jniLibs.srcDirs = ['libs']
+            manifest.srcFile 'AndroidManifest.xml'
+            java.srcDirs = [qt5AndroidDir + '/src', 'src', 'java']
+            aidl.srcDirs = [qt5AndroidDir + '/src', 'src', 'aidl']
+            res.srcDirs = [qt5AndroidDir + '/res', 'res']
+            resources.srcDirs = ['resources']
+            renderscript.srcDirs = ['src']
+            assets.srcDirs = ['assets']
+            jniLibs.srcDirs = ['libs']
        }
+    }
+
+    // Test builds are signed with this key, which is public on purpose:
+    // it only lets a newer test build install over an older one.
+    // A real release would use a private key kept out of the repository.
+    signingConfigs {
+        debug {
+            storeFile file('signet-test.keystore')
+            storePassword 'android'
+            keyAlias 'signet-test'
+            keyPassword 'android'
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    tasks.withType(JavaCompile) {
+        options.incremental = true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
 
     lintOptions {
         abortOnError false
+    }
+
+    // Do not compress Qt binary resources file
+    aaptOptions {
+        noCompress 'rcc'
+    }
+
+    defaultConfig {
+        resConfig "en"
+        minSdkVersion = qtMinSdkVersion
+        targetSdkVersion = qtTargetSdkVersion
     }
 }

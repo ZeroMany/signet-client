@@ -1,10 +1,6 @@
 #include "signetapplication.h"
 
-#ifndef Q_OS_ANDROID
 #include "desktop/mainwindow.h"
-#else
-#include "android/signetdevicemanager.h"
-#endif
 
 #include <QMenu>
 #include <QDesktopWidget>
@@ -53,16 +49,25 @@ SignetApplication::SignetApplication(int &argc, char **argv) :
 	m_bootMode(HC_BOOT_UNKNOWN_MODE)
 {
 
-#ifndef Q_OS_ANDROID
-	QDesktopWidget desktop;
-	int desktopHeight = desktop.geometry().height();
-	int desktopWidth = desktop.geometry().width();
 	int toolIconPx;
 	int fontPx;
 	int fontLargePx;
 	int viewIconPx;
 	int marginPx;
 	int paddingPx;
+
+#ifdef Q_OS_ANDROID
+	// Phone screens: sizes are in scaled pixels, and big enough for fingers.
+	viewIconPx = 32;
+	toolIconPx = 28;
+	marginPx = 3;
+	paddingPx = 6;
+	fontPx = 16;
+	fontLargePx = 19;
+#else
+	QDesktopWidget desktop;
+	int desktopHeight = desktop.geometry().height();
+	int desktopWidth = desktop.geometry().width();
 
 	if (desktopHeight >= 1600) {
 		viewIconPx = 32;
@@ -119,6 +124,7 @@ SignetApplication::SignetApplication(int &argc, char **argv) :
 		fontLargePx = 13;
 #endif
 	}
+#endif
 
 	m_iconPixelsDefault = toolIconPx;
 	m_textPixelsDefault = fontPx;
@@ -148,7 +154,6 @@ SignetApplication::SignetApplication(int &argc, char **argv) :
 			"QLineEdit {font-size: " + fontPxStr + "px; padding:" + paddingPxStr + "}\n"
 			"QSpinBox {font-size: " + fontPxStr + "px; padding:"+ paddingPxStr + "}\n"
 			"QLabel {font-size: " + fontPxStr + "px; margin: "+ marginPxStr +"px}\n");
-#endif
 	g_singleton = this;
 	m_systray = new SystemTray();
 	qRegisterMetaType<signetdevCmdRespInfo>();
@@ -369,12 +374,13 @@ void SignetApplication::init(bool startInTray)
 	signetdev_set_device_event_cb(deviceEventS, this);
 	signetdev_set_error_handler(connectionErrorS, this);
 
-#ifndef Q_OS_ANDROID
 	m_main_window = new MainWindow();
 
 	connect(this, SIGNAL(connectionError()), m_main_window, SLOT(connectionError()));
 
+#ifndef Q_OS_ANDROID
 	QObject::connect(this, SIGNAL(messageReceived(QString)), m_main_window, SLOT(messageReceived(QString)));
+#endif
 	QObject::connect(m_systray, SIGNAL(activated(QSystemTrayIcon::ActivationReason)),
 			 this, SLOT(trayActivated(QSystemTrayIcon::ActivationReason)));
 	QObject::connect(this, SIGNAL(signetdevEvent(int)), m_main_window, SLOT(signetDevEvent(int)));
@@ -383,13 +389,15 @@ void SignetApplication::init(bool startInTray)
 	QIcon app_icon = QIcon(":/images/signet.png");
 	m_main_window->setWindowIcon(app_icon);
 	m_systray->setIcon(app_icon);
+#ifdef Q_OS_ANDROID
+	// No system tray on Android; the app fills the screen.
+	Q_UNUSED(startInTray);
+	m_main_window->showMaximized();
+#else
 	m_systray->show();
 	if (!startInTray) {
 		m_main_window->show();
 	}
-#else
-	m_signetDeviceManager = new SignetDeviceManager(m_qmlEngine, this);
-	Q_UNUSED(startInTray);
 #endif
 }
 
@@ -415,13 +423,10 @@ QMessageBox *SignetApplication::messageBoxWarn(const QString &title, const QStri
 
 SignetApplication::~SignetApplication()
 {
-#ifndef Q_OS_ANDROID
 	if (m_systray)
 		delete m_systray;
-#endif
 }
 
-#ifndef Q_OS_ANDROID
 void SignetApplication::trayActivated(QSystemTrayIcon::ActivationReason reason)
 {
 	bool is_active = m_main_window->isActiveWindow();
@@ -459,6 +464,3 @@ void SignetApplication::trayActivated(QSystemTrayIcon::ActivationReason reason)
 		break;
 	}
 }
-
-
-#endif

@@ -1,34 +1,39 @@
+// Functions the Java side (SignetActivity.java) calls when a Signet is
+// plugged in or removed. They pass the opened USB device to signetdev.
 #include <jni.h>
-#include <android/log.h>
-#include <unistd.h>
 #include <fcntl.h>
-#include <QApplication>
+#include <stdlib.h>
+
+#include "../signetdev_android.h"
 
 extern "C" {
 
-#include "signetdev/host/signetdev_unix.h"
-#include "signetdev/host/signetdev_priv.h"
-
-#include <stdlib.h>
-
-JNIEXPORT void JNICALL Java_com_nthdimtech_SignetActivity_notifyDeviceAttached(JNIEnv* env, jobject *self, jint fd, jint inEp, jint outEp, jboolean hasKeyboard)
+JNIEXPORT jboolean JNICALL Java_com_nthdimtech_SignetActivity_nativeReady(JNIEnv *env, jclass cls)
 {
-	Q_UNUSED(env);
-	Q_UNUSED(self);
+	(void)env;
+	(void)cls;
+	return signetdev_android_api_ready() ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL Java_com_nthdimtech_SignetActivity_notifyDeviceAttached(JNIEnv *env, jclass cls, jint fd, jint inEp, jint outEp, jboolean hasKeyboard, jboolean isHC)
+{
+	(void)env;
+	(void)cls;
 	fcntl(fd, F_SETFL, O_NONBLOCK);
-	struct attach_message *m = (struct attach_message *)malloc(sizeof(struct attach_message));
+	struct signetdev_android_attach *m = (struct signetdev_android_attach *)malloc(sizeof(struct signetdev_android_attach));
 	m->fd = fd;
 	m->rx_endpoint = inEp;
 	m->tx_endpoint = outEp;
 	m->has_keyboard = hasKeyboard ? 1 : 0;
-	signetdev_priv_issue_command_no_resp(SIGNETDEV_CMD_FD_ATTACHED, m);
+	m->is_hc = isHC ? 1 : 0;
+	signetdev_android_attach(m);
 }
 
-JNIEXPORT void JNICALL Java_com_nthdimtech_SignetActivity_notifyDeviceDetached(JNIEnv* env, jobject *self, jint fd)
+JNIEXPORT void JNICALL Java_com_nthdimtech_SignetActivity_notifyDeviceDetached(JNIEnv *env, jclass cls, jint fd)
 {
-	Q_UNUSED(env);
-	Q_UNUSED(self);
-	signetdev_priv_issue_command_no_resp(SIGNETDEV_CMD_FD_DETACHED, (void *)((intptr_t)(fd)));
+	(void)env;
+	(void)cls;
+	signetdev_android_detach(fd);
 }
 
 }

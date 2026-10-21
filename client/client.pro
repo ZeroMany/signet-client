@@ -9,7 +9,7 @@
 QT       += core gui widgets network concurrent svg
 
 android {
-QT += quick androidextras
+QT += androidextras
 }
 
 linux-g++ {
@@ -108,11 +108,15 @@ gnu_linux {
 SOURCES += ../signet-base/signetdev/host/signetdev_linux.c
 }
 
+# Android has its own USB code, which replaces signet-base's outdated
+# Android and Unix files.
 android {
-SOURCES += ../signet-base/signetdev/host/signetdev_android.c
+SOURCES += android/signetdev_android.c \
+        android/jni/signetactivity.cpp
+HEADERS += android/signetdev_android.h
 }
 
-unix {
+unix:!android {
 SOURCES += ../signet-base/signetdev/host/signetdev_unix.c
 SOURCES += ../signet-base/signetdev/host/signetdev_unix.h
 }
@@ -144,7 +148,7 @@ HEADERS += esdb/esdb.h \
     esdb/generic/esdbgenericmodule.h \
     esdb/generictype/esdbgenerictypemodule.h
 
-win32|gnu_linux|macx {
+win32|gnu_linux|macx|android {
 
 #
 # ESDB GUI sources
@@ -250,7 +254,8 @@ use_sse {
     HEADERS += ../scrypt/crypto_scrypt_smix_sse2.h
 }
 
-gnu_linux|macx|win32 {
+# The Android app uses the same screens as the desktop app.
+gnu_linux|macx|win32|android {
 
 
 INCLUDEPATH += desktop minizip
@@ -267,20 +272,23 @@ SOURCES += minizip/unzip.c \
 # Importer sources
 #
 SOURCES += import/entryrenamedialog.cpp \
-    import/keepassunlockdialog.cpp \
     import/databaseimporter.cpp \
     import/databaseimportcontroller.cpp \
-    import/keepassimporter.cpp \
     import/csvimporter.cpp \
     import/csvimportconfigure.cpp
 
-HEADERS += import/keepassunlockdialog.h \
-    import/databaseimporter.h \
+HEADERS += import/databaseimporter.h \
     import/databaseimportcontroller.h \
-    import/keepassimporter.h \
     import/entryrenamedialog.h \
     import/csvimporter.h \
     import/csvimportconfigure.h
+
+!android {
+SOURCES += import/keepassunlockdialog.cpp \
+    import/keepassimporter.cpp
+HEADERS += import/keepassunlockdialog.h \
+    import/keepassimporter.h
+}
 
 
 
@@ -331,8 +339,9 @@ HEADERS +=  desktop/mainwindow.h \
 	desktop/datatypelistmodel.h
 
 #
-# Qt single appliction
+# Qt single appliction (not needed on Android, which only ever runs one copy)
 #
+!android {
 SOURCES += qtsingleapplication/src/qtlocalpeer.cpp \
         qtsingleapplication/src/qtsinglecoreapplication.cpp \
         qtsingleapplication/src/qtsingleapplication.cpp \
@@ -352,10 +361,12 @@ SOURCES += qtsingleapplication/src/qtlockedfile_win.cpp
 macx:gnu_linux {
 SOURCES += qtsingleapplication/src/qtlockedfile_unix.cpp
 }
+}
 
 #
-# KeepassX
+# KeepassX (used to import KeePass files; not built for Android yet)
 #
+!android {
 SOURCES += ../keepassx/src/keys/CompositeKey.cpp \
     ../keepassx/src/keys/PasswordKey.cpp \
     ../keepassx/src/keys/FileKey.cpp \
@@ -447,6 +458,7 @@ HEADERS += ../keepassx/src/core/AutoTypeAssociations.h \
     ../keepassx/src/keys/FileKey.h \
     ../keepassx/src/keys/Key.h \
     ../keepassx/src/keys/PasswordKey.h
+}
 
 win32 {
 RC_FILE = signet.rc
@@ -489,38 +501,30 @@ DISTFILES += signet.rc \
     images/keyboard.xcf \
     images/signet.xcf \
     images/vault.xcf \
-    images/vault_open.xcf \
-    android/package/src/com/nthdimtech/SignetService.java
+    images/vault_open.xcf
 
 android {
+# KeePass import needs the libgcrypt library, which isn't built for
+# Android yet, so that menu item is left out for now.
+DEFINES += SIGNET_NO_KEEPASS
+LIBS += -lz
+# 64-bit ARM files are already large-file safe; this keeps minizip from
+# asking for fopen64(), which older Android versions lack.
+DEFINES += IOAPI_NO_64
 
-SOURCES += android/main.cpp \
-        android/signetdevicemanager.cpp \
-        android/esdbgroupmodel.cpp \
-        android/jni/signetactivity.cpp
-
-HEADERS += android/signetdevicemanager.h \
-    android/esdbgroupmodel.h
-
-
-RESOURCES += android/qml.qrc
-
-QML_IMPORT_PATH =
-
-QML_DESIGNER_IMPORT_PATH =
-
-OTHER_FILES += \
-    android/package/AndroidManifest.xml
-
-DISTFILES += \
-    android/package/gradle/wrapper/gradle-wrapper.jar \
-    android/package/gradlew \
-    android/package/res/values/libs.xml \
-    android/package/build.gradle \
-    android/package/gradle/wrapper/gradle-wrapper.properties \
-    android/package/gradlew.bat \
-    android/package/res/xml/device_filter.xml \
-    android/package/src/com/nthdimtech/SignetActivity.java
+# 64-bit ARM, which covers phones from roughly 2017 on.
+ANDROID_ABIS = arm64-v8a
+ANDROID_MIN_SDK_VERSION = 23
+ANDROID_TARGET_SDK_VERSION = 30
+ANDROID_VERSION_NAME = 0.9.17.1
+ANDROID_VERSION_CODE = 3
 
 ANDROID_PACKAGE_SOURCE_DIR = $$PWD/android/package
+
+DISTFILES += \
+    android/package/AndroidManifest.xml \
+    android/package/build.gradle \
+    android/package/res/values/libs.xml \
+    android/package/res/xml/device_filter.xml \
+    android/package/src/com/nthdimtech/SignetActivity.java
 }

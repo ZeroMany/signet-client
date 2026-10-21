@@ -1,3 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- USB devices that open Signet when plugged in (IDs are in decimal) -->
 <resources>
-    <usb-device vendor-id="0x5E2A" product-id="0x1"/>
+    <!-- Original Signet: 5E2A:0001 -->
+    <usb-device vendor-id="24106" product-id="1"/>
+    <!-- Signet HC: 1209:DF11 -->
+    <usb-device vendor-id="4617" product-id="57105"/>
 </resources>

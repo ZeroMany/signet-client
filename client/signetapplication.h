@@ -7,13 +7,11 @@
 #include <qmetatype.h>
 #ifndef Q_OS_ANDROID
 #include <QtSingleApplication>
-class SystemTray;
-class MainWindow;
 #else
 #include <QApplication>
-#include <QQmlApplicationEngine>
-class SignetDeviceManager;
 #endif
+class SystemTray;
+class MainWindow;
 #include <QVector>
 
 class QMessageBox;
@@ -71,14 +69,8 @@ private:
 	int m_iconPixelsDefault;
 	int m_textPixelsDefault;
 	int m_largeTextPixelsDefault;
-#ifndef Q_OS_ANDROID
 	SystemTray *m_systray;
 	MainWindow *m_main_window;
-
-#else
-	QQmlApplicationEngine m_qmlEngine;
-	SignetDeviceManager *m_signetDeviceManager;
-#endif
 	static void deviceOpenedS(enum signetdev_device_type dev_type, void *this_);
 	static void deviceClosedS(void *this_);
 	static void commandRespS(void *cb_param, void *cmd_user_param, int cmd_token, int cmd, int end_device_state, int messages_remaining, int resp_code, const void *resp_data);
@@ -106,13 +98,6 @@ public:
 	int largeTextHeight() {
 		return m_largeTextPixelsDefault;
 	}
-#ifdef Q_OS_ANDROID
-	QQmlApplicationEngine &qmlEngine()
-	{
-		return m_qmlEngine;
-	}
-#else
-#endif
 	enum device_state {
 		STATE_INVALID,
 		STATE_NEVER_SHOWN,
@@ -245,12 +230,7 @@ signals:
 	void signetdevEvent(int event_type);
 	void signetdevTimerEvent(int seconds_remaining);
 public slots:
-#ifndef Q_OS_ANDROID
 	void trayActivated(QSystemTrayIcon::ActivationReason reason);
-#endif
-private slots:
-#ifndef Q_OS_ANDROID
-#endif
 };
 
 #endif // SIGNETAPPLICATION_H
