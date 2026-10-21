@@ -70,6 +70,7 @@ class MainWindow : public QMainWindow
 public:
 	explicit MainWindow(QWidget *parent = 0);
 	void closeEvent(QCloseEvent *event);
+	bool eventFilter(QObject *watched, QEvent *event);
 	~MainWindow();
 
 	static QString csvQuote(const QString &s);
@@ -96,6 +97,9 @@ private:
 	ButtonWaitWidget *m_buttonWaitWidget;
 	bool m_loggedIn;
 	QTimer m_connectingTimer;
+	// Logs out after a while without keyboard or mouse use in the app
+	QTimer m_autoLockTimer;
+	void restartAutoLockTimer();
 	bool m_wasConnected;
 	bool m_autoBackupCheckPerformed;
 
@@ -170,6 +174,7 @@ public:
 	void endButtonWait();
 	ButtonWaitWidget *beginButtonWait(QString action, bool longPress);
 private slots:
+	void autoLockTimeout();
 	void settingDialogFinished(int rc);
 	void restoreError();
 	void backupError();

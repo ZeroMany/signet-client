@@ -28,6 +28,14 @@ public:
 	{
 		return m_salt;
 	}
+	// Overwrites the password and key kept by this object.
+	void clearSecrets()
+	{
+		m_password.fill(QChar(0));
+		m_password.clear();
+		m_key.fill(0);
+		m_key.clear();
+	}
 };
 
 #endif // KEYGENERATORTHREAD_H
