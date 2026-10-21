@@ -46,6 +46,7 @@
 
 #include "about.h"
 #include "loggedinwidget.h"
+#include "safeactions.h"
 #include "account.h"
 #include "esdbmodel.h"
 #include "resetdevice.h"
@@ -772,6 +773,7 @@ void MainWindow::messageReceived(QString message)
 
 void MainWindow::quit()
 {
+	SafeActions::clearClipboard();
 	m_quitting = true;
 	emit close();
 }
@@ -1572,6 +1574,7 @@ void MainWindow::enterDeviceState(int state)
 	}
 	break;
 	case SignetApplication::STATE_LOGGED_OUT: {
+		SafeActions::clearClipboard();
 		m_loggedIn = false;
 		m_deviceMenu->setDisabled(false);
 		m_fileMenu->setDisabled(false);
@@ -1930,14 +1933,16 @@ void MainWindow::restoreDeviceUi()
 		return;
 	}
 	m_restoreFile = new QFile(sl.first());
-	bool result = m_restoreFile->open(QFile::ReadWrite);
+	bool result = m_restoreFile->open(QFile::ReadOnly);
 	if (!result) {
 		delete m_restoreFile;
+		m_restoreFile = nullptr;
 		SignetApplication::messageBoxError(QMessageBox::Warning, "Restore device from file", "Failed to open backup file", this);
 		return;
 	}
 	if (m_restoreFile->size() != ::signetdev_device_block_size() * (::signetdev_device_num_data_blocks() + ::signetdev_device_num_root_blocks())) {
 		delete m_restoreFile;
+		m_restoreFile = nullptr;
 		SignetApplication::messageBoxError(QMessageBox::Warning, "Restore device from file", "Backup file has wrong size", this);
 		return;
 	}

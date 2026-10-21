@@ -6,6 +6,7 @@
 #include<QPushButton>
 #include<QApplication>
 #include<QClipboard>
+#include "safeactions.h"
 #include "buttonwaitdialog.h"
 #include "signetapplication.h"
 
@@ -216,6 +217,5 @@ void DatabaseField::typeFieldFinished(int rc)
 
 void DatabaseField::copyFieldUi()
 {
-	QClipboard *cb = QApplication::clipboard();
-	cb->setText(m_fieldEdit->text());
+	SafeActions::copySecret(m_fieldEdit->text());
 }

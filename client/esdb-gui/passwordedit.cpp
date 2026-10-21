@@ -115,7 +115,7 @@ void PasswordEdit::generatePasswordComplete(QByteArray rand)
 	QString result;
 	QString charset;
 	QString lowers("abcdefghijklmnopqrstuvwxyz");
-	QString uppers("BCDEFGHIJKLMNOPQRSTUVWXYZ");
+	QString uppers("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
 	QString numbers("0123456789");
 	QString symbols = m_genSymbolSet->text();
 
@@ -132,7 +132,7 @@ void PasswordEdit::generatePasswordComplete(QByteArray rand)
 	sets[0].use = true;
 	sets[0].min_count = 1;
 
-	sets[1].chars = "BCDEFGHIJKLMNOPQRSTUVWXYZ";
+	sets[1].chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 	sets[1].use = true;
 	sets[1].min_count = 1;
 
