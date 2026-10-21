@@ -575,7 +575,9 @@ void MainWindow::signetdevReadAllUIdsResp(signetdevCmdRespInfo info, int id, QBy
 		esdbTypeModule *typeModule = nullptr;
 		QString typeName;
 
-		switch (tmp.type) {
+		// A damaged entry (too short to hold its own header) is skipped.
+		// decodeEntry() below also returns nullptr for damaged entries.
+		switch (blk->readError ? -1 : tmp.type) {
 		case ESDB_TYPE_ACCOUNT:
 			typeModule = m_accountTypeModule;
 			break;
@@ -1260,7 +1262,8 @@ void MainWindow::loadSettings()
 				QString keyS = entry.first().toString();
 				if (keyS.size() != 1)
 					continue;
-				signetdev_key key;
+				// Start from all zeros so fields not set below aren't random.
+				signetdev_key key = {};
 				key.key = keyS.at(0).unicode();
 
 				int codes[4];

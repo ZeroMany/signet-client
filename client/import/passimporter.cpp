@@ -14,6 +14,42 @@
 #include <QStringList>
 #include <QTemporaryFile>
 
+// Runs gpg with the given arguments. Each argument is passed to gpg as-is
+// (no shell, no quoting), so file paths with spaces work. If a passphrase is
+// given it is written to gpg's standard input rather than put on the command
+// line, where other programs on the computer could read it.
+// Returns gpg's exit code, or -1 if gpg could not be run.
+static int runGpg(QStringList args, const QString &passphrase, QByteArray *output = nullptr)
+{
+	QStringList fullArgs;
+	fullArgs << "--batch";
+	if (passphrase.size()) {
+		fullArgs << "--pinentry-mode" << "loopback" << "--passphrase-fd" << "0";
+	}
+	fullArgs << args;
+
+	QProcess p;
+	p.start("gpg", fullArgs);
+	if (!p.waitForStarted(-1)) {
+		return -1;
+	}
+	if (passphrase.size()) {
+		QByteArray secret = passphrase.toUtf8();
+		secret.append('\n');
+		p.write(secret);
+		secret.fill(0);
+	}
+	p.closeWriteChannel();
+	p.waitForFinished(-1);
+	if (output) {
+		*output = p.readAllStandardOutput();
+	}
+	if (p.exitStatus() != QProcess::NormalExit) {
+		return -1;
+	}
+	return p.exitCode();
+}
+
 PassImporter::PassImporter(QWidget *parent) :
 	DatabaseImporter(parent),
 	m_parent(parent)
@@ -64,16 +100,10 @@ void PassImporter::traverse(QString path, QDir &dir)
 	fileInfoList = dir.entryInfoList(nameFilters, QDir::Files);
 	for (auto info : fileInfoList) {
 		QString accountName = info.completeBaseName();
-		QString cmd;
-		cmd = "gpg -d --batch -r " + m_gpgId;
-		if (m_passphrase.size()) {
-			cmd += " --passphrase " + m_passphrase;
-		}
-		cmd += " \"" + info.absoluteFilePath() + "\"";
-		QProcess p;
-		p.start(cmd);
-		p.waitForFinished(-1);
-		int rc = p.exitCode();
+		QStringList args;
+		args << "-r" << m_gpgId << "-d" << info.absoluteFilePath();
+		QByteArray decrypted;
+		int rc = runGpg(args, m_passphrase, &decrypted);
 		if (rc != 0) {
 			QMessageBox *box = SignetApplication::messageBoxError(QMessageBox::Critical,
 			                   databaseTypeName() + " Import",
@@ -82,11 +112,12 @@ void PassImporter::traverse(QString path, QDir &dir)
 			box->exec();
 			box->deleteLater();
 		} else {
-			QString accountPassword = QString::fromUtf8(p.readAllStandardOutput());
+			QString accountPassword = QString::fromUtf8(decrypted);
+			decrypted.fill(0);
 
-			if (accountPassword.size()) {
-				accountPassword[accountPassword.size()-1] == '\n';
-				accountPassword.truncate(accountPassword.size()-1);
+			// Remove the trailing newline, but only if there is one.
+			if (accountPassword.endsWith('\n')) {
+				accountPassword.chop(1);
 			}
 			account *a = new account(-1);
 			a->acctName = accountName;
@@ -135,19 +166,14 @@ bool PassImporter::passphraseCheck(QString passphrase)
 	t.close();
 	t.remove();
 
-	QString cmd;
-	cmd = "gpg --batch -r " + m_gpgId +
-	      " -o " + tmpName +
-	      " -e " + gpgIdPath();
-	if (QProcess::execute(cmd)) {
+	QStringList encryptArgs;
+	encryptArgs << "-r" << m_gpgId << "-o" << tmpName << "-e" << gpgIdPath();
+	if (runGpg(encryptArgs, QString())) {
 		return false;
 	}
-	cmd = "gpg --batch -n -r " + m_gpgId;
-	if (passphrase.size()) {
-		cmd += " --passphrase " + passphrase;
-	}
-	cmd += " -d " + tmpName;
-	bool pass = QProcess::execute(cmd) == 0;
+	QStringList decryptArgs;
+	decryptArgs << "-n" << "-r" << m_gpgId << "-d" << tmpName;
+	bool pass = runGpg(decryptArgs, passphrase) == 0;
 	QFile::remove(tmpName);
 	return pass;
 }
@@ -172,9 +198,9 @@ QString PassImporter::getGPGId()
 	if (!ok) {
 		return QString();
 	}
-	QString cmd = "gpg --batch -n -r " + gpgId + " -e " + gpgIdPath();
-
-	int rc = QProcess::execute(cmd);
+	QStringList args;
+	args << "-n" << "-r" << gpgId << "-e" << gpgIdPath();
+	int rc = runGpg(args, QString());
 	if (rc != 0) {
 		return QString();
 	}

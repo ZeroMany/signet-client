@@ -21,6 +21,16 @@ esdbEntry *esdbBookmarkModule::decodeEntry(int id, int revision, esdbEntry *prev
 		break;
 	}
 
+	if (blk->readError) {
+		// The entry is shorter than its contents claim, so it is damaged.
+		// Don't show a half-read entry. If we were given an existing entry
+		// leave it to the caller; otherwise free the one we made.
+		if (!prev) {
+			delete bm;
+		}
+		return nullptr;
+	}
+
 	switch(revision) {
 	case 0:
 		break;

@@ -331,7 +331,12 @@ static bool findPackPrefix(unzFile zip, QString *prefix)
 		if (unzGetCurrentFileInfo64(zip, &info, nameBuf, sizeof(nameBuf), nullptr, 0, nullptr, 0) != UNZ_OK) {
 			continue;
 		}
-		QString name = QString::fromUtf8(nameBuf);
+		// minizip doesn't add a terminating zero when the name fills the
+		// buffer, so skip names that long and use the length it reports.
+		if (info.size_filename >= sizeof(nameBuf)) {
+			continue;
+		}
+		QString name = QString::fromUtf8(nameBuf, static_cast<int>(info.size_filename));
 		if (name != "pack.json" && !name.endsWith("/pack.json")) {
 			continue;
 		}

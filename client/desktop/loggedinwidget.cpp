@@ -98,6 +98,7 @@ LoggedInWidget::LoggedInWidget(QProgressBar *loading_progress, MainWindow *mw, Q
 	m_newAcctButton(nullptr),
 	m_populating(true),
 	m_populatingCantRead(0),
+	m_populatingDamaged(0),
 	m_searchListbox(nullptr),
 	m_loadingProgress(loading_progress),
 	m_filterEdit(nullptr),
@@ -235,6 +236,8 @@ LoggedInWidget::LoggedInWidget(QProgressBar *loading_progress, MainWindow *mw, Q
 	m_filterLabel->setEnabled(false);
 	m_populating = true;
 	m_populatingCantRead = 0;
+	m_populatingDamaged = 0;
+	m_unreadableIds.clear();
 	m_loadingProgress->setMinimum(0);
 	m_loadingProgress->setMaximum(1);
 
@@ -303,7 +306,16 @@ void LoggedInWidget::signetdevReadAllUIdsResp(signetdevCmdRespInfo info, int uid
 							   " You must upgrade your client to access all of your data",
 							   this);
 		}
+		if (m_populatingDamaged) {
+			SignetApplication::messageBoxError(QMessageBox::Warning,
+							   "Unlocking",
+							   QString::number(m_populatingDamaged) +
+							   " entries could not be read because their data on the device appears to be damaged."
+							   " They have been left untouched on the device",
+							   this);
+		}
 		m_populatingCantRead = 0;
+		m_populatingDamaged = 0;
 		m_populating = false;
 		for (auto entry : m_entries) {
 			int index = entryToIndex(entry);
@@ -797,9 +809,25 @@ void LoggedInWidget::getEntryDone(int id, int code, block *blk, bool task)
 	if (blk && code == OKAY) {
 		esdbEntry_1 tmp(id);
 		tmp.fromBlock(blk);
-		esdbTypeModule *module = getTypeModule(static_cast<enum esdbTypes>(tmp.type));
+		esdbTypeModule *module = nullptr;
+		bool damaged = blk->readError;
+		if (!damaged) {
+			module = getTypeModule(static_cast<enum esdbTypes>(tmp.type));
+		}
 		if (module) {
-			entry = module->decodeEntry(id, tmp.revision, entry, blk);
+			esdbEntry *prev = entry;
+			if (prev) {
+				// Check the data decodes cleanly before decoding it into the
+				// existing entry, so a damaged entry can't half-overwrite it.
+				esdbEntry *probe = module->decodeEntry(id, tmp.revision, nullptr, blk);
+				bool decodable = (probe != nullptr);
+				damaged = blk->readError;
+				delete probe;
+				entry = decodable ? module->decodeEntry(id, tmp.revision, prev, blk) : nullptr;
+			} else {
+				entry = module->decodeEntry(id, tmp.revision, nullptr, blk);
+				damaged = blk->readError;
+			}
 			if (entry) {
 				if (bar) {
 					bar->idTaskComplete(false, id, entry, idTask, m_taskIntent);
@@ -810,7 +838,22 @@ void LoggedInWidget::getEntryDone(int id, int code, block *blk, bool task)
 					}
 				}
 			} else if (m_populating) {
-				m_populatingCantRead++;
+				if (damaged) {
+					m_populatingDamaged++;
+				} else {
+					m_populatingCantRead++;
+				}
+			}
+		} else if (damaged && m_populating) {
+			m_populatingDamaged++;
+		}
+		if (!entry) {
+			if (bar) {
+				// Let the action bar finish its task instead of waiting forever.
+				bar->idTaskComplete(true, id, nullptr, idTask, m_taskIntent);
+			}
+			if (!exists) {
+				m_unreadableIds.insert(id);
 			}
 		}
 	}
@@ -939,6 +982,11 @@ int LoggedInWidget::getUnusedId(const QSet<int> &reserved)
 	}
 	for (auto r : reserved) {
 		entriesValid[r] = 1;
+	}
+	for (auto r : m_unreadableIds) {
+		if (r >= MIN_UID && r <= MAX_UID) {
+			entriesValid[r] = 1;
+		}
 	}
 	for (auto entry : m_entries) {
 		entriesValid[entry->id] = 1;

@@ -5,6 +5,18 @@
 void block::beginRead()
 {
 	index = 0;
+	readError = false;
+}
+
+// Returns true when 'n' more bytes can be read from the current position.
+// Otherwise marks the block as having a read error.
+bool block::canRead(int n)
+{
+	if (n < 0 || index < 0 || index > data.size() || n > data.size() - index) {
+		readError = true;
+		return false;
+	}
+	return true;
 }
 
 void block::beginWrite()
@@ -15,7 +27,10 @@ void block::beginWrite()
 
 size_t block::dataRemaining() const
 {
-	return data.size() - index;
+	if (index < 0 || index >= data.size()) {
+		return 0;
+	}
+	return static_cast<size_t>(data.size() - index);
 }
 
 void block::output_bytes_needed(int n)
@@ -50,6 +65,10 @@ void block::setMask(int index, int len, bool val)
 void block::readString(QString &str)
 {
 	int sz = readU8();
+	if (readError || !canRead(sz)) {
+		str = QString();
+		return;
+	}
 	QByteArray x = data.mid(index, sz);
 	index += sz;
 	str = QString::fromUtf8(x);
@@ -58,6 +77,10 @@ void block::readString(QString &str)
 void block::readLongString(QString &str)
 {
 	int sz = readU16();
+	if (readError || !canRead(sz)) {
+		str = QString();
+		return;
+	}
 	QByteArray x = data.mid(index, sz);
 	index += sz;
 	str = QString::fromUtf8(x);
@@ -65,11 +88,17 @@ void block::readLongString(QString &str)
 
 u8 block::readU8()
 {
+	if (!canRead(1)) {
+		return 0;
+	}
 	return (u8)(data.data()[index++]);
 }
 
 u16 block::readU16()
 {
+	if (!canRead(2)) {
+		return 0;
+	}
 	u16 ret = (u16)((u8 *)data.data())[index];
 	ret += ((u16)((u8 *)data.data())[index + 1]) << 8;
 	index += 2;

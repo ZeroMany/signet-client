@@ -8,6 +8,9 @@ void genericTypeDesc_1::fromBlock(block *blk)
 	int count = blk->readU8();
 	fields.clear();
 	for (int i = 0; i < count; i++) {
+		if (blk->readError) {
+			break;
+		}
 		QString fieldName;
 		QString fieldType;
 		blk->readString(fieldName);
@@ -34,6 +37,9 @@ void genericTypeDesc::fromBlock(block *blk)
 	int count = blk->readU8();
 	fields.clear();
 	for (int i = 0; i < count; i++) {
+		if (blk->readError) {
+			break;
+		}
 		QString fieldName;
 		QString fieldType;
 		blk->readString(fieldName);
