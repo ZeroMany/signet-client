@@ -86,6 +86,7 @@ jobs:
           path: |
             signet
             signet-base/signetdev/host/linux/50-signet.rules
+            client/hwkey/linux/70-yubikey.rules
 
   # Apple M-chip Macs only (macos-14 runs on Apple silicon). The app needs
   # macOS 14 Sonoma or newer, because that is what Homebrew's Qt is built for.

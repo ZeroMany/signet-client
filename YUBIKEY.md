@@ -32,30 +32,33 @@ refuse to unlock instead of quietly trying the password alone.
 ### Supported keys
 
 The YubiKey feature uses the **HMAC-SHA1 challenge-response** feature of the
-YubiKey's "OTP" application. It reaches the key through the computer's
-smart-card service (PC/SC, over the key's CCID interface).
+YubiKey's "OTP" application. It reaches the key over USB through the key's
+keyboard ("OTP") interface, which is the connection that can wait for your
+touch. If that interface is switched off, the app falls back to the key's
+smart-card interface (CCID). That one can't wait for a touch, so a slot with
+*Require touch* won't work over it.
 
 | Key | Works? |
 |---|---|
 | YubiKey 5 series (5 NFC, 5C, 5C NFC, 5 Nano, 5C Nano, 5Ci), including FIPS | Yes |
 | YubiKey NEO | Yes |
-| YubiKey 4 series | Not tested. It may work if its smart-card (CCID) interface is on. |
+| YubiKey 4 series | Not tested. It should work: it has the same OTP interface. |
 | YubiKey "Security Key" series (blue) | **No**. It only does FIDO. |
 | YubiKey Bio | **No**. It only does FIDO. |
 | Other brands | Not supported. |
 
 Use the key over **USB**. NFC isn't supported.
 
-The key's smart-card interface (CCID) must be on. It is on by default. You
-can check in YubiKey Manager under *Interfaces*.
+The key's **OTP** interface must be on for USB. It is on by default. You can
+check in YubiKey Manager under *Interfaces*.
 
 ### Computers
 
 | System | What's needed |
 |---|---|
-| Windows 10 / 11 | Nothing extra. The smart-card service is built in. |
-| macOS 14 or newer | Nothing extra. |
-| Linux | The `pcscd` service must be installed and running: `sudo apt install pcscd` and then `sudo systemctl enable --now pcscd.socket`. The app also needs the `libpcsclite1` library, which most desktops already have. |
+| Windows 10 / 11 | Nothing extra. |
+| macOS 14 or newer | The first time, macOS may ask to let Signet use *Input Monitoring*, because the YubiKey's OTP interface looks like a keyboard. Allow it in System Settings → Privacy & Security → Input Monitoring, then restart the app. The app only sends commands to the key. It doesn't read your typing. |
+| Linux | Your user must be allowed to open the YubiKey. Many systems already allow it through Yubico's rules (package `libykpers-1-1` or `yubikey-personalization`). If not, copy `client/hwkey/linux/70-yubikey.rules` (also included with the Linux download) to `/etc/udev/rules.d/`, run `sudo udevadm control --reload`, then unplug and replug the key. The app also needs the `libpcsclite1` library, which most desktops already have. The `pcscd` service is only needed for the smart-card fallback. |
 
 ## Setting up the YubiKey slot
 
@@ -181,7 +184,8 @@ If you have a backup YubiKey, just use it instead.
 
 ## For developers
 
-- Code: `client/hwkey/` (`loginkey.*` maths, `yubikey.*` PC/SC driver,
+- Code: `client/hwkey/` (`loginkey.*` maths, `yubikeyhid*` keyboard-interface
+  driver, `yubikey.*` driver choice and PC/SC fallback,
   `loginkeybuilder.*` background work, `rekey.*` changes to the login key).
   Screens: `client/desktop/hardwarekeydialog.*`, `touchprompt.*`, and changes
   in `loginwindow.cpp` and `changemasterpassword.cpp`.
@@ -196,5 +200,8 @@ If you have a backup YubiKey, just use it instead.
 - The Signet firmware isn't changed. It already treats the login key as an
   opaque 32-byte AES key and stores the settings bytes as they are.
 - Tests: `client/tests/hwkey/` (see HOW-TO-BUILD.md).
-- KeePassXC's smart-card YubiKey driver was used as a reference for the
-  commands and padding. No code was copied.
+- KeePassXC's smart-card YubiKey driver and Yubico's yubikey-manager
+  (`yubikit/core/otp.py`) were used as references for the commands, frame
+  format and padding. No code was copied.
+- Over USB smart-card (CCID), a touch-required slot answers `69 85` straight
+  away instead of waiting, which is why the keyboard interface comes first.

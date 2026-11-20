@@ -18,7 +18,7 @@ Status LoginKeyJob::touch(int slot, const QByteArray &challenge, QByteArray &res
 	emit touchNeeded(slot);
 	QElapsedTimer timer;
 	timer.start();
-	Status s = responder()->challengeResponse(slot, challenge, response, &serial);
+	Status s = responder()->challengeResponse(slot, challenge, response, &serial, &canceled);
 	if (s == STATUS_OK && timer.elapsed() < minimumTouchMs()) {
 		wipe(response);
 		return STATUS_TOUCH_NOT_REQUIRED;

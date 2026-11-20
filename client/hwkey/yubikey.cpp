@@ -3,6 +3,7 @@
 
 #include <QAtomicPointer>
 #include <QAtomicInt>
+#include <QElapsedTimer>
 #include <cstring>
 
 #if defined(_WIN32)
@@ -128,7 +129,7 @@ struct Session {
 
 ChallengeResponder *responder()
 {
-	static PcscYubiKey real;
+	static YubiKeyDriver real;
 	ChallengeResponder *t = g_testResponder.loadAcquire();
 	return t ? t : &real;
 }
@@ -167,9 +168,31 @@ quint32 readSerial(const Card &card)
 
 } // namespace
 
-Status PcscYubiKey::challengeResponse(int slot, const QByteArray &challenge, QByteArray &response,
-				      quint32 *serial)
+Status YubiKeyDriver::challengeResponse(int slot, const QByteArray &challenge, QByteArray &response,
+					quint32 *serial, const QAtomicInt *cancel)
 {
+	Status h = m_hid.challengeResponse(slot, challenge, response, serial, cancel);
+	if (h != STATUS_NO_KEY && h != STATUS_ACCESS_DENIED) {
+		return h;
+	}
+	// The keyboard interface isn't there or can't be opened (for example
+	// it was switched off in YubiKey Manager). Try the smart-card one.
+	Status p = m_pcsc.challengeResponse(slot, challenge, response, serial, cancel);
+	if (p == STATUS_NO_KEY || p == STATUS_NO_SMARTCARD_SERVICE) {
+		// Neither found a key. If the keyboard interface was refused,
+		// that is the more useful thing to tell the user.
+		return h == STATUS_ACCESS_DENIED ? h : p;
+	}
+	if (p == STATUS_TOUCH_UNAVAILABLE && h == STATUS_ACCESS_DENIED) {
+		return h;
+	}
+	return p;
+}
+
+Status PcscYubiKey::challengeResponse(int slot, const QByteArray &challenge, QByteArray &response,
+				      quint32 *serial, const QAtomicInt *cancel)
+{
+	Q_UNUSED(cancel); // a smart-card command can't be interrupted
 	wipe(response);
 	if (serial) {
 		*serial = 0;
@@ -256,8 +279,8 @@ Status PcscYubiKey::challengeResponse(int slot, const QByteArray &challenge, QBy
 	apdu.append((char)CHALLENGE_SIZE);
 	apdu.append(challenge);
 
-	// This waits until the key is touched, or the key gives up (about
-	// 15 seconds).
+	QElapsedTimer timer;
+	timer.start();
 	QByteArray reply;
 	bool ok = transmit(s.card, apdu, reply);
 	wipe(apdu);
@@ -275,7 +298,9 @@ Status PcscYubiKey::challengeResponse(int slot, const QByteArray &challenge, QBy
 		// something other than challenge-response.
 		result = STATUS_SLOT_NOT_CONFIGURED;
 	} else if (sw == 0x6985) {
-		result = STATUS_TOUCH_TIMEOUT;
+		// "Conditions not satisfied". Straight away, it means the slot
+		// wants a touch and this connection can't wait for one.
+		result = timer.elapsed() < 3000 ? STATUS_TOUCH_UNAVAILABLE : STATUS_TOUCH_TIMEOUT;
 	} else if ((sw & 0xff00) == 0x6a00 || (sw & 0xff00) == 0x6d00) {
 		result = STATUS_SLOT_NOT_CONFIGURED;
 	} else {
@@ -326,6 +351,21 @@ QString statusMessage(Status status, int slot)
 		       "your vault. Check the secret (or that the backup key's slot holds the same secret) and try again.";
 	case STATUS_SAME_KEY:
 		return "That is the same YubiKey. Unplug it and plug in your backup YubiKey instead.";
+	case STATUS_ACCESS_DENIED:
+#if defined(__APPLE__)
+		return "macOS didn't let the app open your YubiKey. Open System Settings, Privacy & Security, "
+		       "Input Monitoring, switch Signet on, then restart the app and try again.";
+#elif defined(__linux__)
+		return "Linux didn't let the app open your YubiKey's keyboard interface. Install Yubico's "
+		       "device rules (for example: sudo apt install yubikey-personalization, or the "
+		       "70-yubikey.rules file described in YUBIKEY.md), unplug the key, plug it back in, and try again.";
+#else
+		return "The computer didn't let the app open your YubiKey. Unplug it, plug it back in, and try again.";
+#endif
+	case STATUS_TOUCH_UNAVAILABLE:
+		return "Your YubiKey refused at once, because its slot needs a touch and the app could only reach "
+		       "the key's smart-card interface, which can't wait for one. In YubiKey Manager, under "
+		       "Interfaces, make sure OTP is switched on for USB, then unplug and replug the key.";
 	case STATUS_ERROR:
 	default:
 		return "Something went wrong talking to the YubiKey. Unplug it, plug it back in, and try again.";

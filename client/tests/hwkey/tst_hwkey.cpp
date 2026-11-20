@@ -17,6 +17,7 @@
 #include "hwkey/yubikey.h"
 #include "hwkey/loginkeybuilder.h"
 #include "hwkey/rekey.h"
+#include "hwkey/yubikeyhid.h"
 
 #ifdef QT_NETWORK_LIB
 #error "The YubiKey feature and its tests must not use the network module"
@@ -121,7 +122,7 @@ public:
 	QAtomicInt calls;
 
 	Status challengeResponse(int s, const QByteArray &challenge, QByteArray &response,
-				 quint32 *serialOut) override
+				 quint32 *serialOut, const QAtomicInt *cancel) override
 	{
 		calls.fetchAndAddOrdered(1);
 		QMutexLocker l(&lock);
@@ -135,6 +136,7 @@ public:
 		int pm = padMode;
 		int mySlot = slot;
 		l.unlock();
+		Q_UNUSED(cancel);
 		if (shouldBlock) {
 			released.acquire();
 		}
@@ -147,6 +149,114 @@ public:
 		}
 		response = softwareResponse(sec, challenge, pm);
 		return STATUS_OK;
+	}
+};
+
+// Behaves like a YubiKey's keyboard interface at the feature-report level.
+class SimHidKey : public OtpHidDevice
+{
+public:
+	QByteArray secret = QByteArray(20, 0x5c);
+	int touchPolls = 3;        // polls spent "blinking" before the touch
+	bool neverTouched = false; // gives up after blinking
+	bool noData = false;       // slot not set up for challenge-response
+	bool corruptAnswer = false;
+	quint32 serial = 0x00a1b2c3;
+	int resets = 0;
+	int badFrames = 0;
+	QByteArray lastPayload;
+	unsigned char lastCmd = 0;
+
+	void pause(int) override {}
+
+	bool setFeature(const unsigned char r[8]) override
+	{
+		if (r[7] == 0xff) {
+			resets++;
+			m_answer.clear();
+			m_state = IDLE;
+			return true;
+		}
+		if (!(r[7] & 0x80)) {
+			return false;
+		}
+		int seq = r[7] & 0x1f;
+		if (seq == 0) {
+			memset(m_frame, 0, sizeof(m_frame));
+		}
+		memcpy(m_frame + seq * 7, r, 7);
+		if (seq == 9) {
+			frameDone();
+		}
+		return true;
+	}
+
+	bool getFeature(unsigned char r[8]) override
+	{
+		memset(r, 0, 8);
+		switch (m_state) {
+		case IDLE:
+			break;
+		case WAITING:
+			if (m_polls-- > 0) {
+				r[7] = 0x20 | 0x0f; // blinking
+			} else if (neverTouched || noData) {
+				m_state = IDLE;
+			} else {
+				m_state = SENDING;
+				r[7] = 0x20;
+			}
+			break;
+		case SENDING:
+			if (m_seq * 7 < m_answer.size()) {
+				memcpy(r, m_answer.constData() + m_seq * 7, 7);
+				r[7] = (unsigned char)(0x40 | m_seq);
+				m_seq++;
+			} else {
+				r[7] = 0x40; // wrapped back to 0: done
+			}
+			break;
+		}
+		return true;
+	}
+
+private:
+	enum { IDLE, WAITING, SENDING } m_state = IDLE;
+	unsigned char m_frame[70];
+	QByteArray m_answer;
+	int m_seq = 0;
+	int m_polls = 0;
+
+	void frameDone()
+	{
+		// The checksum covers the 64 data bytes; it sits after the command byte.
+		if (otpCrc(m_frame, 64) != (quint16)(m_frame[65] | (m_frame[66] << 8))) {
+			badFrames++;
+			return;
+		}
+		lastCmd = m_frame[64];
+		lastPayload = QByteArray((const char *)m_frame, 64);
+		QByteArray body;
+		if (lastCmd == OTP_CMD_DEVICE_SERIAL) {
+			body.append((char)(serial >> 24)).append((char)(serial >> 16))
+			    .append((char)(serial >> 8)).append((char)serial);
+			m_polls = 0;
+		} else {
+			// Variable-length challenge, as YubiKey Manager sets it up.
+			body = softwareResponse(secret, lastPayload, PAD_VARIABLE);
+			m_polls = touchPolls;
+		}
+		quint16 crc = (quint16)~otpCrc((const unsigned char *)body.constData(), body.size());
+		body.append((char)(crc & 0xff)).append((char)(crc >> 8));
+		if (corruptAnswer) {
+			body[0] = (char)(body.at(0) ^ 1);
+		}
+		while (body.size() % 7) {
+			body.append((char)0);
+		}
+		m_answer = body;
+		m_seq = 0;
+		m_state = (lastCmd == OTP_CMD_DEVICE_SERIAL) ? SENDING : WAITING;
 	}
 };
 
@@ -781,6 +891,90 @@ private slots:
 		QVERIFY(response.isEmpty());
 		QCOMPARE(serial, 0u);
 		QCOMPARE(real.challengeResponse(3, QByteArray(64, 0), response), STATUS_ERROR); // no slot 3
+
+		HidYubiKey hid;
+		QCOMPARE(hid.challengeResponse(2, challengeForSalt(randomBytes(32)), response, &serial), STATUS_NO_KEY);
+		YubiKeyDriver driver;
+		s = driver.challengeResponse(2, challengeForSalt(randomBytes(32)), response, &serial);
+		QVERIFY2(s == STATUS_NO_KEY || s == STATUS_NO_SMARTCARD_SERVICE,
+			 qPrintable(QString("unexpected status %1").arg((int)s)));
+	}
+
+	// ---- The keyboard (HID) connection, with a simulated YubiKey ----
+
+	void hidCrcResidual()
+	{
+		QByteArray d("123456789");
+		QCOMPARE((int)otpCrc((const unsigned char *)d.constData(), d.size()), 0x6f91); // ~X-25 check value
+		quint16 c = (quint16)~otpCrc((const unsigned char *)d.constData(), d.size());
+		d.append((char)(c & 0xff)).append((char)(c >> 8));
+		QCOMPARE((int)otpCrc((const unsigned char *)d.constData(), d.size()), (int)OTP_CRC_RESIDUAL);
+	}
+
+	void hidChallengeWaitsForTouch()
+	{
+		SimHidKey key;
+		key.touchPolls = 20;
+		QByteArray challenge = challengeForSalt(randomBytes(32));
+		QByteArray answer;
+		bool touched = false;
+		QCOMPARE(otpHidCommand(key, OTP_CMD_CHAL_HMAC1, challenge, RESPONSE_SIZE, answer, nullptr, &touched),
+			 STATUS_OK);
+		QVERIFY(touched);
+		QCOMPARE(key.badFrames, 0);
+		QCOMPARE((int)key.lastCmd, (int)OTP_CMD_CHAL_HMAC1);
+		QCOMPARE(key.lastPayload, challenge);
+		QCOMPARE(answer, softwareResponse(key.secret, challenge, PAD_VARIABLE));
+	}
+
+	void hidSerial()
+	{
+		SimHidKey key;
+		QByteArray answer;
+		QCOMPARE(otpHidCommand(key, OTP_CMD_DEVICE_SERIAL, QByteArray(), 4, answer, nullptr), STATUS_OK);
+		QCOMPARE(answer, QByteArray::fromHex("00a1b2c3"));
+	}
+
+	void hidTouchTimeout()
+	{
+		SimHidKey key;
+		key.neverTouched = true;
+		QByteArray answer;
+		QCOMPARE(otpHidCommand(key, OTP_CMD_CHAL_HMAC2, challengeForSalt(randomBytes(32)),
+				       RESPONSE_SIZE, answer, nullptr), STATUS_TOUCH_TIMEOUT);
+		QVERIFY(answer.isEmpty());
+	}
+
+	void hidSlotNotConfigured()
+	{
+		SimHidKey key;
+		key.noData = true;
+		key.touchPolls = 0;
+		QByteArray answer;
+		QCOMPARE(otpHidCommand(key, OTP_CMD_CHAL_HMAC2, challengeForSalt(randomBytes(32)),
+				       RESPONSE_SIZE, answer, nullptr), STATUS_SLOT_NOT_CONFIGURED);
+	}
+
+	void hidCorruptAnswerRejected()
+	{
+		SimHidKey key;
+		key.corruptAnswer = true;
+		QByteArray answer;
+		QCOMPARE(otpHidCommand(key, OTP_CMD_CHAL_HMAC2, challengeForSalt(randomBytes(32)),
+				       RESPONSE_SIZE, answer, nullptr), STATUS_ERROR);
+		QVERIFY(answer.isEmpty());
+	}
+
+	void hidCancelStopsBlinking()
+	{
+		SimHidKey key;
+		key.neverTouched = true;
+		key.touchPolls = 1000000;
+		QAtomicInt cancel(1);
+		QByteArray answer;
+		QCOMPARE(otpHidCommand(key, OTP_CMD_CHAL_HMAC2, challengeForSalt(randomBytes(32)),
+				       RESPONSE_SIZE, answer, &cancel), STATUS_CANCELED);
+		QVERIFY(key.resets >= 1); // told the key to stop waiting
 	}
 
 	// ---- Offline ----
