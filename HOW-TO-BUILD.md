@@ -64,13 +64,13 @@ and click **Open Anyway** next to the message about Signet.
 
 ### Windows build steps
 
-First install [MSYS2](https://www.msys2.org). MSYS2 will provide a build environment and a package manager to download Signet's dependencies. Once MSYS2 is installed, launch the "MSYS2 MINGW64" shell and run:
+First install [MSYS2](https://www.msys2.org). MSYS2 will provide a build environment and a package manager to download Signet's dependencies. Once MSYS2 is installed, launch the "MSYS2 UCRT64" shell and run:
 
-	$ pacman -S mingw-w64-x86_64-make mingw-w64-x86_64-gcc mingw-w64-x86_64-qt5-static mingw-w64-x86_64-zlib mingw-w64-x86_64-libgcrypt mingw-w64-x86_64-openssl mingw-w64-x86_64-zstd
+	$ pacman -S mingw-w64-ucrt-x86_64-make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-qt5-static mingw-w64-ucrt-x86_64-zlib mingw-w64-ucrt-x86_64-libgcrypt mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-zstd
 
 Now you can build:
 
-	$ export PATH=/mingw64/qt5-static/bin:$PATH
+	$ export PATH=/ucrt64/qt5-static/bin:$PATH
 	$ qmake client/client.pro CONFIG+=release
 	$ mingw32-make
 
