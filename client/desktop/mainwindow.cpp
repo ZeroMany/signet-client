@@ -970,9 +970,9 @@ void MainWindow::saveSettings()
 	obj.insert("removableBackupInterval", QJsonValue(m_settings.removableBackupInterval));
 	obj.insert("lastRemoveableBackup", QJsonValue(m_settings.lastRemoveableBackup.toString()));
 	obj.insert("activeKeyboardLayout", QJsonValue(m_settings.activeKeyboardLayout));
+	obj.insert("autoLockMinutes", QJsonValue(m_settings.autoLockMinutes));
 #ifndef Q_OS_MACOS
 	obj.insert("minimizeToTray", QJsonValue(m_settings.minimizeToTray));
-	obj.insert("autoLockMinutes", QJsonValue(m_settings.autoLockMinutes));
 #endif
 	obj.insert("windowGeometry", QJsonValue(QLatin1String(m_settings.windowGeometry.toBase64())));
 
