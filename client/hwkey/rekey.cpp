@@ -9,9 +9,11 @@ Rekey::Rekey(QObject *parent) :
 	m_builder(new LoginKeyBuilder(this)),
 	m_step(STEP_NONE),
 	m_serial(0),
-	m_padMode(PAD_UNKNOWN)
+	m_padMode(PAD_UNKNOWN),
+	m_touched(false)
 {
 	connect(m_builder, SIGNAL(finished(int)), this, SLOT(builderFinished(int)));
+	connect(m_builder, &LoginKeyBuilder::touchNeeded, this, [this]() { m_touched = true; });
 }
 
 Rekey::~Rekey()
@@ -60,6 +62,7 @@ void Rekey::start(const Request &request)
 	wipe(m_newKey);
 	m_req = request;
 	m_serial = 0;
+	m_touched = false;
 	m_padMode = request.knownPadMode;
 	if (request.newRequired && request.newSlot != 1 && request.newSlot != 2) {
 		fail(STATUS_ERROR);
@@ -144,7 +147,9 @@ void Rekey::builderFinished(int status)
 		}
 		m_challenge = challengeForSalt(m_newSalt);
 		m_step = STEP_NEW_KEY;
-		m_builder->startTouch(m_req.newSlot, m_challenge);
+		// After an earlier touch, give the finger time to lift first, so
+		// the key doesn't answer at once and look as if it needs no touch.
+		m_builder->startTouch(m_req.newSlot, m_challenge, m_touched ? retryPauseMs() : 0);
 		break;
 	case STEP_NEW_KEY:
 		m_response = m_builder->takeResponse();
@@ -154,7 +159,7 @@ void Rekey::builderFinished(int status)
 			// the slot ignores padding; otherwise it reads all 64 bytes.
 			m_step = STEP_NEW_KEY_AGAIN;
 			QByteArray other = challengeForSalt(m_newSalt, alternatePadByte(m_challenge));
-			m_builder->startTouch(m_req.newSlot, other);
+			m_builder->startTouch(m_req.newSlot, other, retryPauseMs());
 			return;
 		}
 		finishNewKey();

@@ -31,6 +31,7 @@ namespace {
 
 QAtomicPointer<ChallengeResponder> g_testResponder;
 QAtomicInt g_minimumTouchMs(250);
+QAtomicInt g_retryPauseMs(1200);
 
 // The YubiKey "OTP" application, which holds the two challenge-response
 // slots. Selecting it by this ID also tells us the card is a YubiKey.
@@ -149,6 +150,16 @@ void setMinimumTouchMsForTesting(int ms)
 	g_minimumTouchMs.storeRelease(ms);
 }
 
+int retryPauseMs()
+{
+	return g_retryPauseMs.loadAcquire();
+}
+
+void setRetryPauseMsForTesting(int ms)
+{
+	g_retryPauseMs.storeRelease(ms);
+}
+
 namespace {
 
 // The key's serial number, or 0 if it doesn't show it.
@@ -169,15 +180,15 @@ quint32 readSerial(const Card &card)
 } // namespace
 
 Status YubiKeyDriver::challengeResponse(int slot, const QByteArray &challenge, QByteArray &response,
-					quint32 *serial, const QAtomicInt *cancel)
+					quint32 *serial, const QAtomicInt *cancel, bool *waitedForTouch)
 {
-	Status h = m_hid.challengeResponse(slot, challenge, response, serial, cancel);
+	Status h = m_hid.challengeResponse(slot, challenge, response, serial, cancel, waitedForTouch);
 	if (h != STATUS_NO_KEY && h != STATUS_ACCESS_DENIED) {
 		return h;
 	}
 	// The keyboard interface isn't there or can't be opened (for example
 	// it was switched off in YubiKey Manager). Try the smart-card one.
-	Status p = m_pcsc.challengeResponse(slot, challenge, response, serial, cancel);
+	Status p = m_pcsc.challengeResponse(slot, challenge, response, serial, cancel, waitedForTouch);
 	if (p == STATUS_NO_KEY || p == STATUS_NO_SMARTCARD_SERVICE) {
 		// Neither found a key. If the keyboard interface was refused,
 		// that is the more useful thing to tell the user.
@@ -190,9 +201,12 @@ Status YubiKeyDriver::challengeResponse(int slot, const QByteArray &challenge, Q
 }
 
 Status PcscYubiKey::challengeResponse(int slot, const QByteArray &challenge, QByteArray &response,
-				      quint32 *serial, const QAtomicInt *cancel)
+				      quint32 *serial, const QAtomicInt *cancel, bool *waitedForTouch)
 {
 	Q_UNUSED(cancel); // a smart-card command can't be interrupted
+	if (waitedForTouch) {
+		*waitedForTouch = false; // this interface never waits for a touch
+	}
 	wipe(response);
 	if (serial) {
 		*serial = 0;
@@ -337,9 +351,10 @@ QString statusMessage(Status status, int slot)
 	case STATUS_TOUCH_TIMEOUT:
 		return "The YubiKey wasn't touched in time. Try again and touch the key while it blinks.";
 	case STATUS_TOUCH_NOT_REQUIRED:
-		return QString("Your YubiKey's %1 answered without being touched. For safety the app only "
-			       "accepts a slot that requires a touch. Turn on 'Require touch' for this slot in "
-			       "YubiKey Manager, keeping the same secret.").arg(slotText);
+		return QString("Your YubiKey's %1 answered twice without waiting for a touch. For safety the "
+			       "app only accepts a slot that requires a touch. If your finger was resting on "
+			       "the key, try again and touch it only when it blinks. Otherwise turn on "
+			       "'Require touch' for this slot in YubiKey Manager, keeping the same secret.").arg(slotText);
 	case STATUS_BAD_SETTINGS:
 		return "Your Signet reported login settings this app doesn't recognise or that look damaged, "
 		       "so nothing was sent to it. If this is your own Signet, it may be faulty or tampered with.";

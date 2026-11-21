@@ -182,9 +182,12 @@ Status otpHidCommand(OtpHidDevice &dev, unsigned char cmd, const QByteArray &pay
 }
 
 Status HidYubiKey::challengeResponse(int slot, const QByteArray &challenge, QByteArray &response,
-				     quint32 *serial, const QAtomicInt *cancel)
+				     quint32 *serial, const QAtomicInt *cancel, bool *waitedForTouch)
 {
 	wipe(response);
+	if (waitedForTouch) {
+		*waitedForTouch = false;
+	}
 	if (serial) {
 		*serial = 0;
 	}
@@ -213,7 +216,7 @@ Status HidYubiKey::challengeResponse(int slot, const QByteArray &challenge, QByt
 	}
 
 	Status st = otpHidCommand(*dev, slot == 1 ? OTP_CMD_CHAL_HMAC1 : OTP_CMD_CHAL_HMAC2,
-				  challenge, RESPONSE_SIZE, response, cancel);
+				  challenge, RESPONSE_SIZE, response, cancel, waitedForTouch);
 	if (st != STATUS_OK) {
 		wipe(response);
 	}

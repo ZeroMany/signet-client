@@ -49,23 +49,28 @@ public:
 	// the key's serial number, or 0 if the key doesn't show it. If
 	// `cancel` becomes non-zero while waiting, the driver stops (and the
 	// key stops blinking) as soon as it can. Called on a worker thread,
-	// never on the screen's thread.
+	// never on the screen's thread. `waitedForTouch` (if given) is set to
+	// true when the key reported that it was blinking and waiting for a
+	// touch before it answered: proof that the slot requires a touch.
 	virtual Status challengeResponse(int slot, const QByteArray &challenge, QByteArray &response,
-					 quint32 *serial = nullptr, const QAtomicInt *cancel = nullptr) = 0;
+					 quint32 *serial = nullptr, const QAtomicInt *cancel = nullptr,
+					 bool *waitedForTouch = nullptr) = 0;
 };
 
 class PcscYubiKey : public ChallengeResponder
 {
 public:
 	Status challengeResponse(int slot, const QByteArray &challenge, QByteArray &response,
-				 quint32 *serial = nullptr, const QAtomicInt *cancel = nullptr) override;
+				 quint32 *serial = nullptr, const QAtomicInt *cancel = nullptr,
+				 bool *waitedForTouch = nullptr) override;
 };
 
 class HidYubiKey : public ChallengeResponder
 {
 public:
 	Status challengeResponse(int slot, const QByteArray &challenge, QByteArray &response,
-				 quint32 *serial = nullptr, const QAtomicInt *cancel = nullptr) override;
+				 quint32 *serial = nullptr, const QAtomicInt *cancel = nullptr,
+				 bool *waitedForTouch = nullptr) override;
 };
 
 // The real driver: the keyboard interface first, then the smart-card one.
@@ -73,7 +78,8 @@ class YubiKeyDriver : public ChallengeResponder
 {
 public:
 	Status challengeResponse(int slot, const QByteArray &challenge, QByteArray &response,
-				 quint32 *serial = nullptr, const QAtomicInt *cancel = nullptr) override;
+				 quint32 *serial = nullptr, const QAtomicInt *cancel = nullptr,
+				 bool *waitedForTouch = nullptr) override;
 private:
 	HidYubiKey m_hid;
 	PcscYubiKey m_pcsc;
@@ -85,10 +91,16 @@ private:
 ChallengeResponder *responder();
 void setResponderForTesting(ChallengeResponder *r);
 
-// An answer faster than this means the slot didn't wait for a touch. A
-// person can't touch the key this quickly after it starts blinking.
+// An answer faster than this, without the key having reported that it
+// waited for a touch, suggests the slot doesn't require a touch. (It can
+// also mean a finger was already on the key, so the app asks once more
+// before giving up.)
 int minimumTouchMs();
 void setMinimumTouchMsForTesting(int ms);
+// How long to wait before asking again after a too-quick answer, and
+// between one touch and the next during set-up.
+int retryPauseMs();
+void setRetryPauseMsForTesting(int ms);
 
 } // namespace HwKey
 

@@ -101,6 +101,7 @@ private:
 	QByteArray m_response;
 	quint32 m_serial;
 	int m_padMode;
+	bool m_touched; // a YubiKey touch has been asked for in this run
 };
 
 } // namespace HwKey

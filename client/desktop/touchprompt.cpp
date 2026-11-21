@@ -18,6 +18,11 @@ TouchPrompt::TouchPrompt(HwKey::LoginKeyBuilder *builder, int slot, const QStrin
 	setText(text);
 	connect(this, SIGNAL(finished(int)), this, SLOT(userClosed(int)));
 	connect(builder, SIGNAL(finished(int)), this, SLOT(builderFinished(int)));
+	connect(builder, &HwKey::LoginKeyBuilder::touchAgain, this, [this](int s) {
+		setText(QString("That answer came back too quickly to be a fresh touch. "
+				"Maybe your finger was already on the key.\n\n"
+				"Lift your finger. When the YubiKey blinks again (slot %1), touch it once.").arg(s));
+	});
 	// If the window that started this goes away, close the prompt too.
 	connect(builder, &QObject::destroyed, this, [this]() { builderFinished(HwKey::STATUS_CANCELED); });
 }

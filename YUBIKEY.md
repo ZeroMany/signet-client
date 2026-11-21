@@ -101,8 +101,9 @@ different challenge, so it gets a different answer.
    - choose *I have a backup YubiKey*. You'll be asked to swap keys
      partway through.
 5. Click **Turn on** and touch the YubiKey each time it blinks. The app asks
-   for **two** touches. The second one tells it how the slot reads
-   challenges, so the recovery secret works later.
+   for **two** touches, about a second apart. The second one tells it how
+   the slot reads challenges, so the recovery secret works later. Lift your
+   finger after each touch and wait for the next blink.
 6. Press and hold the Signet's button to confirm.
 
 The app checks that the recovery secret, or the backup key, gives exactly
@@ -123,8 +124,12 @@ to the Signet:
 - **Slot not set up:** set it up as described above.
 - **Not touched in time:** the key waits about 15 seconds. Try again.
 - **Cancel pressed:** nothing is sent.
-- **The slot answered without a touch:** someone turned off *Require touch*.
-  Turn it back on in YubiKey Manager, keeping the same secret.
+- **The slot answered without a touch:** if an answer comes back instantly
+  (for example because your finger was still on the key), the app asks you
+  to lift your finger and asks the key once more. Only if the second answer
+  is instant too does it stop. Then either touch only when the key blinks,
+  or *Require touch* was turned off: turn it back on in YubiKey Manager,
+  keeping the same secret.
 - **Smart-card service missing:** see *Computers* above.
 - **"Incorrect password, or not the right YubiKey or recovery secret":** the
   Signet can't tell which part was wrong.
@@ -174,8 +179,11 @@ If you have a backup YubiKey, just use it instead.
   answer. If you think that happened, change your master password. That
   makes a new challenge.
 - **The touch check is a timing check.** The YubiKey can't report whether
-  *Require touch* is on. The app refuses answers that come back too quickly
-  for a person to have touched the key.
+  *Require touch* is on. Over the keyboard interface the key does report
+  that it is blinking and waiting, and the app accepts that as proof.
+  Otherwise it refuses answers that come back too quickly for a person to
+  have touched the key (after asking once more, in case a finger was
+  already on it).
 - **Android isn't covered.** The Android app is paused. It can't unlock a
   Signet that needs a YubiKey (it fails like a wrong password). It never
   skips the key.

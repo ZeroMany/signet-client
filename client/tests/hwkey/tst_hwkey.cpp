@@ -118,11 +118,13 @@ public:
 	Status forced = STATUS_OK;
 	quint32 serial = 1234567;
 	bool block = false;     // wait until release() (for cancel tests)
+	int fastAnswers = 0;    // this many calls answer at once (finger already on the key)
+	bool reportsWait = false; // says it blinked and waited, however fast it answers
 	QSemaphore released;
 	QAtomicInt calls;
 
 	Status challengeResponse(int s, const QByteArray &challenge, QByteArray &response,
-				 quint32 *serialOut, const QAtomicInt *cancel) override
+				 quint32 *serialOut, const QAtomicInt *cancel, bool *waitedForTouch) override
 	{
 		calls.fetchAndAddOrdered(1);
 		QMutexLocker l(&lock);
@@ -131,6 +133,13 @@ public:
 		}
 		bool shouldBlock = block;
 		int delay = delayMs;
+		if (fastAnswers > 0) {
+			fastAnswers--;
+			delay = 0;
+		}
+		if (waitedForTouch) {
+			*waitedForTouch = reportsWait;
+		}
 		Status f = forced;
 		QByteArray sec = secret;
 		int pm = padMode;
@@ -336,6 +345,7 @@ private slots:
 		m_key = new FakeYubiKey();
 		setResponderForTesting(m_key);
 		setMinimumTouchMsForTesting(30);
+		setRetryPauseMsForTesting(40);
 	}
 
 	void cleanupTestCase()
@@ -355,6 +365,9 @@ private slots:
 		m_key->forced = STATUS_OK;
 		m_key->serial = 1234567;
 		m_key->block = false;
+		m_key->fastAnswers = 0;
+		m_key->reportsWait = false;
+		m_key->calls.storeRelease(0);
 	}
 
 	// ---- The maths ----
@@ -594,6 +607,55 @@ private slots:
 		QCOMPARE(runRekey(r, enableRequest(dev, "pw")), (int)STATUS_TOUCH_NOT_REQUIRED);
 	}
 
+	void enrolSurvivesFingerStillOnKey()
+	{
+		// The first answer of each touch comes back at once, as if the
+		// finger was still on the key. One retry each, then it works.
+		{
+			QMutexLocker l(&m_key->lock);
+			m_key->fastAnswers = 1;
+		}
+		FakeSignet dev = FakeSignet::create("pw");
+		Rekey r;
+		QCOMPARE(runRekey(r, enableRequest(dev, "pw")), (int)STATUS_OK);
+		QCOMPARE(m_key->calls.loadAcquire(), 3); // fast + retry, then the padding check
+	}
+
+	void fastAnswerAfterBlinkingIsAccepted()
+	{
+		// The key said it was waiting for a touch, so speed doesn't matter.
+		FakeSignet dev = FakeSignet::create("pw");
+		enable(dev, "pw");
+		{
+			QMutexLocker l(&m_key->lock);
+			m_key->delayMs = 0;
+			m_key->reportsWait = true;
+		}
+		m_key->calls.storeRelease(0);
+		LoginKeyBuilder b;
+		QCOMPARE(runBuilder(b, dev, "pw"), (int)STATUS_OK);
+		QCOMPARE(m_key->calls.loadAcquire(), 1);
+	}
+
+	void unlockRetriesOnceAfterQuickAnswer()
+	{
+		FakeSignet dev = FakeSignet::create("pw");
+		enable(dev, "pw");
+		{
+			QMutexLocker l(&m_key->lock);
+			m_key->fastAnswers = 1;
+		}
+		m_key->calls.storeRelease(0);
+		LoginKeyBuilder b;
+		QSignalSpy again(&b, SIGNAL(touchAgain(int)));
+		QSignalSpy needed(&b, SIGNAL(touchNeeded(int)));
+		QCOMPARE(runBuilder(b, dev, "pw"), (int)STATUS_OK);
+		QCOMPARE(m_key->calls.loadAcquire(), 2);
+		QCOMPARE(again.count(), 1);
+		QCOMPARE(needed.count(), 1); // the same prompt stays up
+		QCOMPARE(dev.login(b.takeKey()), (int)OKAY);
+	}
+
 	void enrolNeedsCorrectPasswordFirst()
 	{
 		FakeSignet dev = FakeSignet::create("pw");
@@ -673,9 +735,11 @@ private slots:
 			QMutexLocker l(&m_key->lock);
 			m_key->delayMs = 0;
 		}
+		m_key->calls.storeRelease(0);
 		LoginKeyBuilder b;
 		QCOMPARE(runBuilder(b, dev, "pw"), (int)STATUS_TOUCH_NOT_REQUIRED);
 		QVERIFY(b.takeKey().isEmpty());
+		QCOMPARE(m_key->calls.loadAcquire(), 2); // asked once more before refusing
 	}
 
 	void canceledTouch()

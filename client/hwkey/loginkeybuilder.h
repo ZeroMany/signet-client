@@ -40,6 +40,9 @@ public:
 	QByteArray challenge;
 	int keyLength = 0;
 	int slot = 0;
+	// Wait this long before asking the key, so a finger still resting on
+	// it from the previous touch has time to lift.
+	int pauseBeforeMs = 0;
 
 	QAtomicInt canceled;
 	int status = STATUS_ERROR;
@@ -50,10 +53,14 @@ public:
 	~LoginKeyJob() override;
 signals:
 	void touchNeeded(int slot);
+	// The first answer came back too quickly to be a fresh touch (maybe
+	// a finger was already on the key). The key is about to be asked again.
+	void touchAgain(int slot);
 protected:
 	void run() override;
 private:
 	Status touch(int slot, const QByteArray &challenge, QByteArray &response);
+	bool pause(int ms); // false if canceled while waiting
 };
 
 class LoginKeyBuilder : public QObject
@@ -71,8 +78,9 @@ public:
 	// Only the scrambled password (set-up uses this with new settings).
 	void startPasswordKey(const QString &password, const QByteArray &hashfn,
 			      const QByteArray &salt, int keyLength);
-	// Only a YubiKey answer for this challenge.
-	void startTouch(int slot, const QByteArray &challenge);
+	// Only a YubiKey answer for this challenge. `pauseBeforeMs` gives the
+	// user time to lift their finger after a previous touch.
+	void startTouch(int slot, const QByteArray &challenge, int pauseBeforeMs = 0);
 
 	void cancel();
 	bool busy() const { return m_job != nullptr; }
@@ -85,11 +93,13 @@ public:
 
 signals:
 	void touchNeeded(int slot);
+	void touchAgain(int slot);
 	void finished(int status);
 
 private slots:
 	void jobFinished();
 	void jobTouchNeeded(int slot);
+	void jobTouchAgain(int slot);
 
 private:
 	void launch(LoginKeyJob *job);

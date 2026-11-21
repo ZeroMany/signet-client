@@ -13,20 +13,53 @@ LoginKeyJob::~LoginKeyJob()
 	wipe(response);
 }
 
+bool LoginKeyJob::pause(int ms)
+{
+	QElapsedTimer t;
+	t.start();
+	while (t.elapsed() < ms) {
+		if (canceled.loadAcquire()) {
+			return false;
+		}
+		QThread::msleep(20);
+	}
+	return !canceled.loadAcquire();
+}
+
 Status LoginKeyJob::touch(int slot, const QByteArray &challenge, QByteArray &response)
 {
+	if (!pause(pauseBeforeMs)) {
+		return STATUS_CANCELED;
+	}
 	emit touchNeeded(slot);
-	QElapsedTimer timer;
-	timer.start();
-	Status s = responder()->challengeResponse(slot, challenge, response, &serial, &canceled);
-	if (s == STATUS_OK && timer.elapsed() < minimumTouchMs()) {
+	// A slot that requires a touch makes the key blink and report that it
+	// is waiting; that report is proof enough. Without it, an answer that
+	// comes back faster than a person can react means either the slot
+	// doesn't require a touch, or a finger was already on the key (easy
+	// to do when one touch follows another). Ask once more after a pause
+	// before deciding.
+	for (int attempt = 0; attempt < 2; attempt++) {
+		bool waited = false;
+		QElapsedTimer timer;
+		timer.start();
+		Status s = responder()->challengeResponse(slot, challenge, response, &serial,
+							  &canceled, &waited);
+		if (s != STATUS_OK) {
+			wipe(response);
+			return s;
+		}
+		if (waited || timer.elapsed() >= minimumTouchMs()) {
+			return STATUS_OK;
+		}
 		wipe(response);
-		return STATUS_TOUCH_NOT_REQUIRED;
+		if (attempt == 0) {
+			emit touchAgain(slot);
+			if (!pause(retryPauseMs())) {
+				return STATUS_CANCELED;
+			}
+		}
 	}
-	if (s != STATUS_OK) {
-		wipe(response);
-	}
-	return s;
+	return STATUS_TOUCH_NOT_REQUIRED;
 }
 
 void LoginKeyJob::run()
@@ -111,6 +144,7 @@ void LoginKeyBuilder::launch(LoginKeyJob *job)
 	m_serial = 0;
 	m_job = job;
 	connect(job, SIGNAL(touchNeeded(int)), this, SLOT(jobTouchNeeded(int)), Qt::QueuedConnection);
+	connect(job, SIGNAL(touchAgain(int)), this, SLOT(jobTouchAgain(int)), Qt::QueuedConnection);
 	connect(job, SIGNAL(finished()), this, SLOT(jobFinished()), Qt::QueuedConnection);
 	// The job always cleans itself up, even if this builder is gone.
 	connect(job, SIGNAL(finished()), job, SLOT(deleteLater()));
@@ -151,12 +185,13 @@ void LoginKeyBuilder::startPasswordKey(const QString &password, const QByteArray
 	launch(job);
 }
 
-void LoginKeyBuilder::startTouch(int slot, const QByteArray &challenge)
+void LoginKeyBuilder::startTouch(int slot, const QByteArray &challenge, int pauseBeforeMs)
 {
 	LoginKeyJob *job = new LoginKeyJob();
 	job->kind = LoginKeyJob::TOUCH;
 	job->slot = slot;
 	job->challenge = challenge;
+	job->pauseBeforeMs = pauseBeforeMs;
 	launch(job);
 }
 
@@ -173,6 +208,13 @@ void LoginKeyBuilder::jobTouchNeeded(int slot)
 	// Ignore a late message from a job that was canceled.
 	if (sender() == m_job) {
 		emit touchNeeded(slot);
+	}
+}
+
+void LoginKeyBuilder::jobTouchAgain(int slot)
+{
+	if (sender() == m_job) {
+		emit touchAgain(slot);
 	}
 }
 
