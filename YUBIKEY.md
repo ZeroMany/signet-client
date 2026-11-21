@@ -57,7 +57,7 @@ check in YubiKey Manager under *Interfaces*.
 | System | What's needed |
 |---|---|
 | Windows 10 / 11 | Nothing extra. |
-| macOS 14 or newer | The first time, macOS may ask to let Signet use *Input Monitoring*, because the YubiKey's OTP interface looks like a keyboard. Allow it in System Settings → Privacy & Security → Input Monitoring, then restart the app. The app only sends commands to the key. It doesn't read your typing. |
+| macOS 15 or newer | The first time, macOS may ask to let Signet use *Input Monitoring*, because the YubiKey's OTP interface looks like a keyboard. Allow it in System Settings → Privacy & Security → Input Monitoring, then restart the app. The app only sends commands to the key. It doesn't read your typing. |
 | Linux | Your user must be allowed to open the YubiKey. Many systems already allow it through Yubico's rules (package `libykpers-1-1` or `yubikey-personalization`). If not, copy `client/hwkey/linux/70-yubikey.rules` (also included with the Linux download) to `/etc/udev/rules.d/`, run `sudo udevadm control --reload`, then unplug and replug the key. The app also needs the `libpcsclite1` library, which most desktops already have. The `pcscd` service is only needed for the smart-card fallback. |
 
 ## Setting up the YubiKey slot

@@ -43,7 +43,7 @@ You will need to install Signet's `udev` rule before the client will work. You c
 ### Mac OS build steps
 
 These steps are for Macs with Apple M-chips (M1 and newer). Intel Macs are
-no longer supported. The finished app needs macOS 14 Sonoma or newer.
+no longer supported. The finished app needs macOS 15 Sequoia or newer.
 
 First install [Homebrew](https://brew.sh). Then run:
 

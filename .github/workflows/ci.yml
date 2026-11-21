@@ -88,10 +88,10 @@ jobs:
             signet-base/signetdev/host/linux/50-signet.rules
             client/hwkey/linux/70-yubikey.rules
 
-  # Apple M-chip Macs only (macos-14 runs on Apple silicon). The app needs
-  # macOS 14 Sonoma or newer, because that is what Homebrew's Qt is built for.
+  # Apple M-chip Macs only (macos-15 runs on Apple silicon). The app needs
+  # macOS 15 Sequoia or newer, because that is what Homebrew's Qt is built for.
   macos:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
