@@ -20,6 +20,13 @@ concurrency:
 jobs:
   windows:
     runs-on: windows-latest
+    env:
+      # MSYS2 no longer ships a ready-made static Qt 5, so this job builds
+      # one (qtbase + qtsvg) from Qt's source the first time and keeps it in
+      # the GitHub Actions cache. Later runs reuse it and take minutes.
+      # Bump QT_CACHE_REV to force a rebuild with the same Qt version.
+      QT_VERSION: 5.15.16
+      QT_CACHE_REV: 1
     defaults:
       run:
         shell: msys2 {0}
@@ -33,16 +40,63 @@ jobs:
           msystem: MINGW64
           update: true
           install: >-
+            make
+            perl
             mingw-w64-x86_64-make
             mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-qt5-static
             mingw-w64-x86_64-zlib
             mingw-w64-x86_64-libgcrypt
-            mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zstd
+      - name: Restore static Qt from cache
+        id: qt-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: qt5-static
+          key: qt5-static-${{ env.QT_VERSION }}-mingw64-r${{ env.QT_CACHE_REV }}
+      - name: Build static Qt (only when not cached)
+        if: steps.qt-cache.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          prefix="$(cygpath -m "$GITHUB_WORKSPACE/qt5-static")"
+          work="$(cygpath -u "$RUNNER_TEMP")/qt-src"
+          mkdir -p "$work" && cd "$work"
+          fetch() {
+            # Newer releases live under official_releases, older under archive.
+            for base in https://download.qt.io/official_releases/qt https://download.qt.io/archive/qt; do
+              curl -fL --retry 3 -o "$1.tar.xz" "$base/5.15/$QT_VERSION/submodules/$1.tar.xz" && return 0
+            done
+            return 1
+          }
+          fetch "qtbase-everywhere-opensource-src-$QT_VERSION"
+          fetch "qtsvg-everywhere-opensource-src-$QT_VERSION"
+          tar xf "qtbase-everywhere-opensource-src-$QT_VERSION.tar.xz"
+          tar xf "qtsvg-everywhere-opensource-src-$QT_VERSION.tar.xz"
+          mkdir build-qtbase && cd build-qtbase
+          # Only what the client uses: widgets, network, concurrent, svg.
+          # The C flag keeps Qt's bundled C libraries building on GCC 15,
+          # which otherwise defaults to C23.
+          "../qtbase-everywhere-src-$QT_VERSION/configure" \
+            -prefix "$prefix" -platform win32-g++ \
+            -static -static-runtime -release -opensource -confirm-license \
+            -nomake examples -nomake tests -no-pkg-config \
+            -no-opengl -no-dbus -no-icu -no-ssl -no-sql-sqlite \
+            -qt-zlib -qt-libpng -qt-libjpeg -qt-pcre -qt-freetype -qt-harfbuzz \
+            "QMAKE_CFLAGS+=-std=gnu17"
+          mingw32-make -j4
+          mingw32-make install
+          cd .. && mkdir build-qtsvg && cd build-qtsvg
+          "$prefix/bin/qmake" "../qtsvg-everywhere-src-$QT_VERSION/qtsvg.pro"
+          mingw32-make -j4
+          mingw32-make install
+      - name: Save static Qt to cache
+        if: steps.qt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: qt5-static
+          key: ${{ steps.qt-cache.outputs.cache-primary-key }}
       - name: Build
         run: |
-          export PATH=/mingw64/qt5-static/bin:$PATH
+          export PATH="$GITHUB_WORKSPACE/qt5-static/bin:$PATH"
           qmake client/client.pro CONFIG+=release
           mingw32-make -j4
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
