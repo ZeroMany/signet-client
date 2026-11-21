@@ -19,9 +19,14 @@ If you downloaded the source from an archive then the submodules are already inc
 
 On Debian-based systems (Ubuntu, Linux Mint, etc.), install Signet's build dependencies:
 
-	$ sudo apt-get install qtbase5-dev qt5-qmake libqt5svg5-dev libqt5x11extras5-dev libgcrypt20-dev zlib1g-dev libx11-dev
+	$ sudo apt-get install qtbase5-dev qt5-qmake libqt5svg5-dev libqt5x11extras5-dev libgcrypt20-dev zlib1g-dev libx11-dev libpcsclite-dev
 
-On other systems, install the equivalent libraries for Qt5 (with Svg and X11Extras), zlib, libX11, and libgcrypt.
+On other systems, install the equivalent libraries for Qt5 (with Svg and X11Extras), zlib, libX11, libgcrypt and pcsc-lite.
+
+To use a YubiKey with Signet, the smart-card service must also be installed and running (see [YUBIKEY.md](YUBIKEY.md)):
+
+	$ sudo apt-get install pcscd
+	$ sudo systemctl enable --now pcscd.socket
 
 To build, run qmake and then make:
 
@@ -38,7 +43,7 @@ You will need to install Signet's `udev` rule before the client will work. You c
 ### Mac OS build steps
 
 These steps are for Macs with Apple M-chips (M1 and newer). Intel Macs are
-no longer supported. The finished app needs macOS 14 Sonoma or newer.
+no longer supported. The finished app needs macOS 15 Sequoia or newer.
 
 First install [Homebrew](https://brew.sh). Then run:
 
@@ -59,14 +64,27 @@ and click **Open Anyway** next to the message about Signet.
 
 ### Windows build steps
 
-First install [MSYS2](https://www.msys2.org). MSYS2 will provide a build environment and a package manager to download Signet's dependencies. Once MSYS2 is installed, launch the "MSYS2 MINGW64" shell and run:
+First install [MSYS2](https://www.msys2.org). MSYS2 will provide a build environment and a package manager to download Signet's dependencies. Once MSYS2 is installed, launch the "MSYS2 UCRT64" shell and run:
 
-	$ pacman -S mingw-w64-x86_64-make mingw-w64-x86_64-gcc mingw-w64-x86_64-qt5-static mingw-w64-x86_64-zlib mingw-w64-x86_64-libgcrypt mingw-w64-x86_64-openssl mingw-w64-x86_64-zstd
+	$ pacman -S mingw-w64-ucrt-x86_64-make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-qt5-static mingw-w64-ucrt-x86_64-zlib mingw-w64-ucrt-x86_64-libgcrypt mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-zstd
 
 Now you can build:
 
-	$ export PATH=/mingw64/qt5-static/bin:$PATH
+	$ export PATH=/ucrt64/qt5-static/bin:$PATH
 	$ qmake client/client.pro CONFIG+=release
 	$ mingw32-make
 
 This will build `signet.exe` in the `release` subdirectory. This executable is self-contained and you can copy it anywhere and run it.
+
+### Running the tests
+
+The YubiKey unlock feature has its own tests, which use a pretend YubiKey
+and a pretend Signet, so they need no hardware. Build and run them from a
+separate folder (on Windows use `mingw32-make` and `release/hwkey_tests.exe`):
+
+	$ mkdir build-tests && cd build-tests
+	$ qmake ../client/tests/hwkey/hwkey_tests.pro CONFIG+=release
+	$ make
+	$ ./hwkey_tests
+
+The automatic builds run these tests on Windows, Linux and Mac.

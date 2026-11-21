@@ -74,6 +74,7 @@ extern "C" {
 };
 
 #include "changemasterpassword.h"
+#include "hardwarekeydialog.h"
 #include "esdbgenericmodule.h"
 #include "esdbbookmarkmodule.h"
 #include "esdbaccountmodule.h"
@@ -120,6 +121,7 @@ MainWindow::MainWindow(QWidget *parent) :
 	m_wipeDeviceAction(nullptr),
 	m_eraseDeviceAction(nullptr),
 	m_changePasswordAction(nullptr),
+	m_hardwareKeyAction(nullptr),
 	m_signetdevCmdToken(-1),
 	m_startedExport(false),
 	m_deviceType(SIGNETDEV_DEVICE_NONE),
@@ -226,6 +228,10 @@ MainWindow::MainWindow(QWidget *parent) :
 	QObject::connect(m_changePasswordAction, SIGNAL(triggered(bool)),
 			 this, SLOT(changePasswordUi()));
 
+	m_hardwareKeyAction = m_deviceMenu->addAction("YubiKey...");
+	QObject::connect(m_hardwareKeyAction, SIGNAL(triggered(bool)),
+			 this, SLOT(hardwareKeyUi()));
+
 	m_eraseDeviceAction = m_deviceMenu->addAction("Reset");
 	QObject::connect(m_eraseDeviceAction, SIGNAL(triggered(bool)),
 			 this, SLOT(eraseDeviceUi()));
@@ -244,6 +250,7 @@ MainWindow::MainWindow(QWidget *parent) :
 	m_eraseDeviceAction->setVisible(false);
 	m_wipeDeviceAction->setVisible(false);
 	m_changePasswordAction->setVisible(false);
+	m_hardwareKeyAction->setVisible(false);
 	m_backupAction->setVisible(false);
 	m_restoreAction->setVisible(false);
 	m_passwordSlots->setVisible(false);
@@ -806,6 +813,14 @@ void MainWindow::changePasswordUi()
 	connect(cmp, SIGNAL(abort()), this, SLOT(abort()));
 	connect(cmp, SIGNAL(finished(int)), cmp, SLOT(deleteLater()));
 	cmp->show();
+}
+
+void MainWindow::hardwareKeyUi()
+{
+	HardwareKeyDialog *d = new HardwareKeyDialog(this);
+	connect(d, SIGNAL(abort()), this, SLOT(abort()));
+	connect(d, SIGNAL(finished(int)), d, SLOT(deleteLater()));
+	d->show();
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)
@@ -1622,6 +1637,8 @@ void MainWindow::enterDeviceState(int state)
 		}
 
 		m_changePasswordAction->setVisible(false);
+
+		m_hardwareKeyAction->setVisible(false);
 		m_passwordSlots->setVisible(false);
 
 		m_uninitPrompt = new QWidget();
@@ -1658,6 +1675,7 @@ void MainWindow::enterDeviceState(int state)
 		}
 		m_wipeDeviceAction->setVisible(true);
 		m_changePasswordAction->setVisible(true);
+		m_hardwareKeyAction->setVisible(true);
 		m_eraseDeviceAction->setVisible(true);
 		m_eraseDeviceAction->setText("Reinitialize");
 		m_passwordSlots->setVisible(false);
@@ -1687,6 +1705,7 @@ void MainWindow::enterDeviceState(int state)
 			m_backupAction->setVisible(true);
 		}
 		m_changePasswordAction->setVisible(true);
+		m_hardwareKeyAction->setVisible(true);
 		SignetApplication *app = SignetApplication::get();
 		int major;
 		int minor;

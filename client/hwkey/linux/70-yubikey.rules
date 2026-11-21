@@ -1,0 +1,6 @@
+# Lets the person logged in to the computer use a YubiKey's keyboard (OTP)
+# interface, which Signet needs for YubiKey challenge-response.
+# Install: sudo cp 70-yubikey.rules /etc/udev/rules.d/
+#          sudo udevadm control --reload
+# then unplug and replug the YubiKey.
+ACTION=="add|change", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1050", TAG+="uaccess"
