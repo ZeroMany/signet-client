@@ -140,6 +140,7 @@ private:
 	QAction *m_wipeDeviceAction;
 	QAction *m_eraseDeviceAction;
 	QAction *m_changePasswordAction;
+	QAction *m_hardwareKeyAction;
 	QMessageBox *m_wipeDeviceDialog;
 	enum signetdev_device_type m_deviceType;
 	int m_signetdevCmdToken;
@@ -209,6 +210,7 @@ public slots:
 	void enterDeviceState(int);
 	void logoutUi();
 	void changePasswordUi();
+	void hardwareKeyUi();
 	void eraseDeviceUi();
 	void backupDeviceUi();
 	void restoreDeviceUi();
