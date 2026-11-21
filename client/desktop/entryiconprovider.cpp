@@ -11,6 +11,7 @@
 #include <QPixmap>
 #include <QSet>
 #include <QStandardPaths>
+#include "appdirs.h"
 #include <QStringList>
 #include <QSvgRenderer>
 #include <QUrl>
@@ -47,8 +48,7 @@ EntryIconProvider::EntryIconProvider()
 
 QString EntryIconProvider::importedPackDir()
 {
-	return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
-	       "/signet/icon-pack/";
+	return AppDirs::configDir() + "/icon-pack/";
 }
 
 void EntryIconProvider::reload()

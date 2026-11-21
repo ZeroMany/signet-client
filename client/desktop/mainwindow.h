@@ -68,6 +68,8 @@ class MainWindow : public QMainWindow
 	LoggedInWidget *m_loggedInWidget;
 
 public:
+	// Writes the settings to config.json (see appdirs.h for where).
+	void saveSettings();
 	explicit MainWindow(QWidget *parent = 0);
 	void closeEvent(QCloseEvent *event);
 	bool eventFilter(QObject *watched, QEvent *event);
@@ -158,7 +160,6 @@ private:
 #endif
 
 	void loadSettings();
-	void saveSettings();
 	void autoBackupCheck();
 	void showEvent(QShowEvent *event);
 	void backupDevice(QString fileName);

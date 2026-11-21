@@ -16,13 +16,16 @@
 #include <QStandardPaths>
 
 #include "entryiconprovider.h"
+#include "appdirs.h"
 #include "signetapplication.h"
 
 #include "style.h"
 
 SettingsDialog::SettingsDialog(MainWindow *mainWindow, bool initial) :
 	QDialog(mainWindow),
-	m_initial(initial)
+	m_initial(initial),
+	m_portable(nullptr),
+	m_mainWindow(mainWindow)
 {
 	m_settings = mainWindow->getSettings();
 	setWindowTitle("System settings");
@@ -138,6 +141,14 @@ SettingsDialog::SettingsDialog(MainWindow *mainWindow, bool initial) :
 	m_minimizeToTray = nullptr;
 #endif
 
+	// Hidden where it can't work (see AppDirs::portableSupported)
+	if (AppDirs::portableSupported()) {
+		m_portable = new QCheckBox("&Portable: keep settings in the same folder as the Signet program");
+		m_portable->setChecked(AppDirs::isPortable());
+		m_portable->setToolTip("Settings are now kept in " +
+				       QDir::toNativeSeparators(AppDirs::configDir()));
+	}
+
 	QVBoxLayout *topLayout = new QVBoxLayout();
 	topLayout->setAlignment(Qt::AlignTop);
 	topLayout->addWidget(m_localBackups);
@@ -154,6 +165,9 @@ SettingsDialog::SettingsDialog(MainWindow *mainWindow, bool initial) :
 #ifndef Q_OS_MACOS
 	topLayout->addWidget(m_minimizeToTray);
 #endif
+	if (m_portable) {
+		topLayout->addWidget(m_portable);
+	}
 	topLayout->addLayout(buttonLayout);
 	setLayout(topLayout);
 	setEnableDisable();
@@ -226,7 +240,55 @@ void SettingsDialog::okayPressed()
 #ifndef Q_OS_MACOS
 	m_settings->minimizeToTray = m_minimizeToTray->isChecked();
 #endif
+	if (!applyPortableChange()) {
+		// The other settings are saved; the dialog stays open so the
+		// error can be read and the switch is back where it was.
+		return;
+	}
 	done(0);
+}
+
+// Moves the settings files if the portable switch was changed. Returns
+// false (after telling the user why) if they couldn't be moved.
+bool SettingsDialog::applyPortableChange()
+{
+	if (!m_portable || m_portable->isChecked() == AppDirs::isPortable()) {
+		return true;
+	}
+	bool portable = m_portable->isChecked();
+
+	// Write the current settings first so there is a config.json to move.
+	m_mainWindow->saveSettings();
+
+	QString error;
+	if (!AppDirs::setPortable(portable, &error)) {
+		m_portable->setChecked(!portable);
+		SignetApplication::messageBoxError(QMessageBox::Warning, "Portable mode", error, this);
+		return false;
+	}
+	m_portable->setToolTip("Settings are now kept in " +
+			       QDir::toNativeSeparators(AppDirs::configDir()));
+	// The icon pack moved with the settings, so redraw icons from there.
+	emit IconPackNotifier::get()->changed();
+
+	// If backups still go to the default folder, offer the matching
+	// default for the new mode. Existing backups are never moved.
+	QString docsDefault = QDir::cleanPath(
+		QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/SignetBackups");
+	QString portableDefault = QDir::cleanPath(AppDirs::programDir() + "/SignetBackups");
+	QString oldDefault = portable ? docsDefault : portableDefault;
+	QString newDefault = portable ? portableDefault : docsDefault;
+	if (QDir::cleanPath(m_settings->localBackupPath) == oldDefault) {
+		QMessageBox::StandardButton answer = QMessageBox::question(this, "Portable mode",
+			"Local backups are saved in " + QDir::toNativeSeparators(oldDefault) +
+			". Save new backups in " + QDir::toNativeSeparators(newDefault) +
+			" instead?\n\nBackups you already have stay where they are.",
+			QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+		if (answer == QMessageBox::Yes) {
+			m_settings->localBackupPath = newDefault;
+		}
+	}
+	return true;
 }
 
 void SettingsDialog::cancelPressed()

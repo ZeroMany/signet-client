@@ -31,6 +31,9 @@ class SettingsDialog : public QDialog
 	QString m_activeKeyboardLayout;
 	QLabel *m_keyboardLayoutUnconfiguredWarning;
 	QCheckBox *m_minimizeToTray;
+	QCheckBox *m_portable;
+	MainWindow *m_mainWindow;
+	bool applyPortableChange();
 	QSpinBox *m_autoLockMinutes;
 	QLabel *m_iconPackLabel;
 	QPushButton *m_removeIconPackButton;

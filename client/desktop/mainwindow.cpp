@@ -24,6 +24,7 @@
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QStandardPaths>
+#include "appdirs.h"
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QJsonArray>
@@ -949,8 +950,7 @@ extern "C" {
 
 void MainWindow::saveSettings()
 {
-	QString configFileName = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
-				 "/signet/config.json";
+	QString configFileName = AppDirs::configDir() + "/config.json";
 	QFile configFile(configFileName);
 	if (!configFile.open(QFile::WriteOnly)) {
 		auto box = SignetApplication::get()->messageBoxError(QMessageBox::Warning, "Couldn't write settings",
@@ -961,6 +961,8 @@ void MainWindow::saveSettings()
 	}
 	QJsonDocument doc;
 	QJsonObject obj;
+	// Marks a config.json next to the program as Signet's own (see appdirs.h)
+	obj.insert("portable", QJsonValue(AppDirs::isPortable()));
 	obj.insert("localBackups", QJsonValue(m_settings.localBackups));
 	obj.insert("localBackupPath", QJsonValue(m_settings.localBackupPath));
 	obj.insert("localBackupInterval", QJsonValue(m_settings.localBackupInterval));
@@ -1163,14 +1165,8 @@ void MainWindow::backupDatabasePromptDialogFinished(int rc)
 
 void MainWindow::loadSettings()
 {
-	QString genericConfigPath = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
-	QString appConfigPath = genericConfigPath + "/signet";
-
-	QDir configDir(genericConfigPath);
-	QDir appConfigDir(appConfigPath);
-	if (!appConfigDir.exists()) {
-		configDir.mkdir("signet");
-	}
+	QString appConfigPath = AppDirs::configDir();
+	QDir().mkpath(appConfigPath);
 
 	QString configFileName = appConfigPath + "/config.json";
 
