@@ -35,7 +35,8 @@ jobs:
         with:
           submodules: true
           persist-credentials: false
-      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+      - id: msys2
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
         with:
           msystem: MINGW64
           update: true
@@ -53,11 +54,10 @@ jobs:
         with:
           path: qt5-static
           key: qt5-static-${{ env.QT_VERSION }}-mingw64-r${{ env.QT_CACHE_REV }}
-      - name: Build static Qt (only when not cached)
+      - name: Download Qt source (only when not cached)
         if: steps.qt-cache.outputs.cache-hit != 'true'
         run: |
           set -e
-          prefix="$(cygpath -m "$GITHUB_WORKSPACE/qt5-static")"
           work="$(cygpath -u "$RUNNER_TEMP")/qt-src"
           mkdir -p "$work" && cd "$work"
           fetch() {
@@ -71,23 +71,27 @@ jobs:
           fetch "qtsvg-everywhere-opensource-src-$QT_VERSION"
           tar xf "qtbase-everywhere-opensource-src-$QT_VERSION.tar.xz"
           tar xf "qtsvg-everywhere-opensource-src-$QT_VERSION.tar.xz"
-          mkdir build-qtbase && cd build-qtbase
-          # Only what the client uses: widgets, network, concurrent, svg.
-          # The C flag keeps Qt's bundled C libraries building on GCC 15,
-          # which otherwise defaults to C23.
-          "../qtbase-everywhere-src-$QT_VERSION/configure" \
-            -prefix "$prefix" -platform win32-g++ \
-            -static -static-runtime -release -opensource -confirm-license \
-            -nomake examples -nomake tests -no-pkg-config \
-            -no-opengl -no-dbus -no-icu -no-ssl -no-sql-sqlite \
-            -qt-zlib -qt-libpng -qt-libjpeg -qt-pcre -qt-freetype -qt-harfbuzz \
-            "QMAKE_CFLAGS+=-std=gnu17"
-          mingw32-make -j4
-          mingw32-make install
-          cd .. && mkdir build-qtsvg && cd build-qtsvg
-          "$prefix/bin/qmake" "../qtsvg-everywhere-src-$QT_VERSION/qtsvg.pro"
-          mingw32-make -j4
-          mingw32-make install
+      # Qt's configure has to run from cmd (configure.bat): the shell
+      # version hands MSYS-style paths to qmake, which is a Windows program
+      # and rejects them. MSYS2's MinGW compiler is put on PATH by hand.
+      - name: Build static Qt (only when not cached)
+        if: steps.qt-cache.outputs.cache-hit != 'true'
+        shell: cmd
+        run: |
+          set PATH=${{ steps.msys2.outputs.msys2-location }}\mingw64\bin;%PATH%
+          set PREFIX=%GITHUB_WORKSPACE%\qt5-static
+          cd /d %RUNNER_TEMP%\qt-src || exit /b 1
+          mkdir build-qtbase && cd build-qtbase || exit /b 1
+          rem Only what the client uses: widgets, network, concurrent, svg.
+          rem The C flag keeps Qt's bundled C libraries building on GCC 15,
+          rem which otherwise defaults to C23.
+          call ..\qtbase-everywhere-src-%QT_VERSION%\configure.bat -prefix %PREFIX% -platform win32-g++ -static -static-runtime -release -opensource -confirm-license -nomake examples -nomake tests -no-pkg-config -no-opengl -no-dbus -no-icu -no-ssl -no-sql-sqlite -qt-zlib -qt-libpng -qt-libjpeg -qt-pcre -qt-freetype -qt-harfbuzz "QMAKE_CFLAGS+=-std=gnu17" || exit /b 1
+          mingw32-make -j4 || exit /b 1
+          mingw32-make install || exit /b 1
+          cd .. && mkdir build-qtsvg && cd build-qtsvg || exit /b 1
+          %PREFIX%\bin\qmake ..\qtsvg-everywhere-src-%QT_VERSION%\qtsvg.pro || exit /b 1
+          mingw32-make -j4 || exit /b 1
+          mingw32-make install || exit /b 1
       - name: Save static Qt to cache
         if: steps.qt-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -96,7 +100,7 @@ jobs:
           key: ${{ steps.qt-cache.outputs.cache-primary-key }}
       - name: Build
         run: |
-          export PATH="$GITHUB_WORKSPACE/qt5-static/bin:$PATH"
+          export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/qt5-static/bin:$PATH"
           qmake client/client.pro CONFIG+=release
           mingw32-make -j4
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
