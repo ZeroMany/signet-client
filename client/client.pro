@@ -296,6 +296,7 @@ SOURCES += desktop/main.cpp \
         desktop/resetdevice.cpp \
         desktop/loggedinwidget.cpp \
         desktop/entryiconprovider.cpp \
+        desktop/appdirs.cpp \
         desktop/safeactions.cpp \
         desktop/aspectratiopixmaplabel.cpp \
         desktop/changemasterpassword.cpp \
@@ -318,6 +319,7 @@ HEADERS +=  desktop/mainwindow.h \
         desktop/resetdevice.h \
         desktop/loggedinwidget.h \
         desktop/entryiconprovider.h \
+        desktop/appdirs.h \
         desktop/safeactions.h \
         desktop/aspectratiopixmaplabel.h \
         desktop/changemasterpassword.h \
