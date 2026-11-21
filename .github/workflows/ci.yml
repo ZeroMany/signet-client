@@ -20,13 +20,6 @@ concurrency:
 jobs:
   windows:
     runs-on: windows-latest
-    env:
-      # MSYS2 no longer ships a ready-made static Qt 5, so this job builds
-      # one (qtbase + qtsvg) from Qt's source the first time and keeps it in
-      # the GitHub Actions cache. Later runs reuse it and take minutes.
-      # Bump QT_CACHE_REV to force a rebuild with the same Qt version.
-      QT_VERSION: 5.15.16
-      QT_CACHE_REV: 1
     defaults:
       run:
         shell: msys2 {0}
@@ -35,74 +28,30 @@ jobs:
         with:
           submodules: true
           persist-credentials: false
-      - id: msys2
-        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
         with:
-          msystem: MINGW64
+          msystem: UCRT64
           update: true
           install: >-
-            make
-            perl
-            mingw-w64-x86_64-make
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-zlib
-            mingw-w64-x86_64-libgcrypt
-            mingw-w64-x86_64-zstd
-      - name: Restore static Qt from cache
-        id: qt-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: qt5-static
-          key: qt5-static-${{ env.QT_VERSION }}-mingw64-r${{ env.QT_CACHE_REV }}
-      - name: Download Qt source (only when not cached)
-        if: steps.qt-cache.outputs.cache-hit != 'true'
-        run: |
-          set -e
-          work="$(cygpath -u "$RUNNER_TEMP")/qt-src"
-          mkdir -p "$work" && cd "$work"
-          fetch() {
-            # Newer releases live under official_releases, older under archive.
-            for base in https://download.qt.io/official_releases/qt https://download.qt.io/archive/qt; do
-              curl -fL --retry 3 -o "$1.tar.xz" "$base/5.15/$QT_VERSION/submodules/$1.tar.xz" && return 0
-            done
-            return 1
-          }
-          fetch "qtbase-everywhere-opensource-src-$QT_VERSION"
-          fetch "qtsvg-everywhere-opensource-src-$QT_VERSION"
-          tar xf "qtbase-everywhere-opensource-src-$QT_VERSION.tar.xz"
-          tar xf "qtsvg-everywhere-opensource-src-$QT_VERSION.tar.xz"
-      # Qt's configure has to run from cmd (configure.bat): the shell
-      # version hands MSYS-style paths to qmake, which is a Windows program
-      # and rejects them. MSYS2's MinGW compiler is put on PATH by hand.
-      - name: Build static Qt (only when not cached)
-        if: steps.qt-cache.outputs.cache-hit != 'true'
-        shell: cmd
-        run: |
-          set PATH=${{ steps.msys2.outputs.msys2-location }}\mingw64\bin;%PATH%
-          set PREFIX=%GITHUB_WORKSPACE%\qt5-static
-          cd /d %RUNNER_TEMP%\qt-src || exit /b 1
-          mkdir build-qtbase && cd build-qtbase || exit /b 1
-          rem Only what the client uses: widgets, network, concurrent, svg.
-          rem The C flag keeps Qt's bundled C libraries building on GCC 15,
-          rem which otherwise defaults to C23.
-          call ..\qtbase-everywhere-src-%QT_VERSION%\configure.bat -prefix %PREFIX% -platform win32-g++ -static -static-runtime -release -opensource -confirm-license -nomake examples -nomake tests -no-pkg-config -no-opengl -no-dbus -no-icu -no-ssl -no-sql-sqlite -qt-zlib -qt-libpng -qt-libjpeg -qt-pcre -qt-freetype -qt-harfbuzz "QMAKE_CFLAGS+=-std=gnu17" || exit /b 1
-          mingw32-make -j4 || exit /b 1
-          mingw32-make install || exit /b 1
-          cd .. && mkdir build-qtsvg && cd build-qtsvg || exit /b 1
-          %PREFIX%\bin\qmake ..\qtsvg-everywhere-src-%QT_VERSION%\qtsvg.pro || exit /b 1
-          mingw32-make -j4 || exit /b 1
-          mingw32-make install || exit /b 1
-      - name: Save static Qt to cache
-        if: steps.qt-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: qt5-static
-          key: ${{ steps.qt-cache.outputs.cache-primary-key }}
+            mingw-w64-ucrt-x86_64-make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-qt5-static
+            mingw-w64-ucrt-x86_64-zlib
+            mingw-w64-ucrt-x86_64-libgcrypt
+            mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-zstd
       - name: Build
         run: |
-          export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/qt5-static/bin:$PATH"
+          export PATH=/ucrt64/qt5-static/bin:$PATH
           qmake client/client.pro CONFIG+=release
           mingw32-make -j4
+      - name: Test YubiKey unlock
+        run: |
+          export PATH=/ucrt64/qt5-static/bin:$PATH
+          mkdir -p build-tests && cd build-tests
+          qmake ../client/tests/hwkey/hwkey_tests.pro CONFIG+=release
+          mingw32-make -j4
+          ./release/hwkey_tests.exe
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: signet-windows
@@ -119,22 +68,30 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y qtbase5-dev qt5-qmake libqt5svg5-dev \
-            libqt5x11extras5-dev libgcrypt20-dev zlib1g-dev libx11-dev
+            libqt5x11extras5-dev libgcrypt20-dev zlib1g-dev libx11-dev \
+            libpcsclite-dev
       - name: Build
         run: |
           qmake client/client.pro CONFIG+=release
           make -j4
+      - name: Test YubiKey unlock
+        run: |
+          mkdir -p build-tests && cd build-tests
+          qmake ../client/tests/hwkey/hwkey_tests.pro CONFIG+=release
+          make -j4
+          ./hwkey_tests
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: signet-linux
           path: |
             signet
             signet-base/signetdev/host/linux/50-signet.rules
+            client/hwkey/linux/70-yubikey.rules
 
-  # Apple M-chip Macs only (macos-14 runs on Apple silicon). The app needs
-  # macOS 14 Sonoma or newer, because that is what Homebrew's Qt is built for.
+  # Apple M-chip Macs only (macos-15 runs on Apple silicon). The app needs
+  # macOS 15 Sequoia or newer, because that is what Homebrew's Qt is built for.
   macos:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -153,6 +110,13 @@ jobs:
           macdeployqt signet.app
           codesign --force --deep --sign - signet.app
           ditto -c -k --keepParent signet.app signet-macos.zip
+      - name: Test YubiKey unlock
+        run: |
+          export PATH="$(brew --prefix qt@5)/bin:$PATH"
+          mkdir -p build-tests && cd build-tests
+          qmake ../client/tests/hwkey/hwkey_tests.pro CONFIG+=release
+          make -j3
+          ./hwkey_tests
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: signet-macos

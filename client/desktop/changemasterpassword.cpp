@@ -12,10 +12,11 @@ extern "C" {
 #include "buttonwaitdialog.h"
 #include "signetapplication.h"
 
-#include <algorithm>
-#include <random>
 
 #include "style.h"
+#include "touchprompt.h"
+#include "hwkey/loginkey.h"
+#include "hwkey/rekey.h"
 
 ChangeMasterPassword::ChangeMasterPassword(QWidget *parent) :
 	QDialog(parent),
@@ -25,12 +26,13 @@ ChangeMasterPassword::ChangeMasterPassword(QWidget *parent) :
 	m_newPasswordEdit(nullptr),
 	m_newPasswordRepeatEdit(nullptr),
 	m_buttonDialog(nullptr),
-	m_generatingOldKey(false),
-	m_generatingNewKey(false),
 	m_signetdevCmdToken(-1)
 {
-	m_keyGenerator = new KeyGeneratorThread();
-	QObject::connect(m_keyGenerator, SIGNAL(finished()), this, SLOT(keyGenerated()));
+	m_rekey = new HwKey::Rekey(this);
+	connect(m_rekey, SIGNAL(finished(int)), this, SLOT(keysReady(int)));
+	HwKey::Rekey *rekey = m_rekey;
+	TouchPrompt::attach(m_rekey->builder(), this, "Change Master Password",
+			    [rekey]() { return rekey->stepDescription(); });
 
 	SignetApplication *app = SignetApplication::get();
 
@@ -89,6 +91,15 @@ ChangeMasterPassword::ChangeMasterPassword(QWidget *parent) :
 	layout->addWidget(m_newPasswordWarningMessage);
 	layout->addLayout(securityLevelEdit);
 	layout->addWidget(m_securityLevelComment);
+	{
+		HwKey::ScryptParams scrypt;
+		HwKey::Config cfg;
+		if (HwKey::parseHashfn(SignetApplication::get()->getHashfn(), scrypt, cfg) && cfg.required) {
+			layout->addWidget(new noteText(QString("Your YubiKey (slot %1) stays switched on. You'll touch it "
+				"twice: once to confirm the old password, once to lock the vault with the new one.")
+				.arg(cfg.slot)));
+		}
+	}
 	layout->addWidget(m_generatingKeys);
 	layout->addWidget(m_changePasswordBtn);
 	setLayout(layout);
@@ -99,43 +110,48 @@ ChangeMasterPassword::ChangeMasterPassword(QWidget *parent) :
 	connect(m_oldPasswordEdit, SIGNAL(textEdited(QString)), this, SLOT(oldPasswordTextEdited(QString)));
 }
 
-void ChangeMasterPassword::keyGenerated()
+void ChangeMasterPassword::setInputsEnabled(bool enabled)
 {
-	if (m_generatingOldKey) {
-		m_generatingOldKey = false;
-		m_generatingNewKey = true;
-		m_oldKey = m_keyGenerator->getKey();
-		if (m_oldKey.isEmpty()) {
-			m_generatingKeys->hide();
-			SignetApplication::messageBoxError(QMessageBox::Critical, "Change Master Password",
-				"The device reported unsafe security settings, so your password was not sent to it.", this);
-			return;
+	m_newPasswordEdit->setEnabled(enabled);
+	m_newPasswordRepeatEdit->setEnabled(enabled);
+	m_oldPasswordEdit->setEnabled(enabled);
+	m_changePasswordBtn->setEnabled(enabled);
+	m_authSecurityLevel->setEnabled(enabled);
+}
+
+void ChangeMasterPassword::keysReady(int status)
+{
+	m_generatingKeys->hide();
+	if (status != HwKey::STATUS_OK) {
+		setInputsEnabled(true);
+		m_securityLevelComment->show();
+		if (status != HwKey::STATUS_CANCELED) {
+			SignetApplication::messageBoxError(
+				status == HwKey::STATUS_BAD_SETTINGS ? QMessageBox::Critical : QMessageBox::Warning,
+				"Change Master Password", HwKey::statusMessage((HwKey::Status)status), this);
 		}
-		int keyLength = SignetApplication::get()->getKeyLength();
-		m_keyGenerator->setParams(this->m_newPasswordEdit->text(), m_newHashfn, m_newSalt, keyLength);
-		m_keyGenerator->start();
-	} else if (m_generatingNewKey) {
-		m_generatingNewKey = false;
-		m_newKey = m_keyGenerator->getKey();
-		m_generatingKeys->hide();
-		m_buttonDialog = new ButtonWaitDialog("Change Master Password", "change master password", this, true);
-		connect(m_buttonDialog, SIGNAL(finished(int)), this, SLOT(changePasswordFinished(int)));
-		m_buttonDialog->show();
-		::signetdev_change_master_password(NULL, &m_signetdevCmdToken,
-                           (u8 *)m_oldKey.data(), m_oldKey.length(),
-                           (u8 *)m_newKey.data(), m_newKey.length(),
-                           (u8 *)m_newHashfn.data(), m_newHashfn.length(),
-                           (u8 *)m_newSalt.data(), m_newSalt.length());
+		return;
 	}
+	QByteArray oldKey = m_rekey->takeOldKey();
+	QByteArray newKey = m_rekey->takeNewKey();
+	m_newHashfn = m_rekey->newHashfn();
+	m_newSalt = m_rekey->newSalt();
+	m_buttonDialog = new ButtonWaitDialog("Change Master Password", "change master password", this, true);
+	connect(m_buttonDialog, SIGNAL(finished(int)), this, SLOT(changePasswordFinished(int)));
+	m_buttonDialog->show();
+	::signetdev_change_master_password(NULL, &m_signetdevCmdToken,
+					   (u8 *)oldKey.data(), oldKey.length(),
+					   (u8 *)newKey.data(), newKey.length(),
+					   (u8 *)m_newHashfn.data(), m_newHashfn.length(),
+					   (u8 *)m_newSalt.data(), m_newSalt.length());
+	// The command keeps its own copy.
+	HwKey::wipe(oldKey);
+	HwKey::wipe(newKey);
 }
 
 ChangeMasterPassword::~ChangeMasterPassword()
 {
-	m_generatingOldKey = false;
-	m_generatingNewKey = false;
-	m_keyGenerator->wait();
-	m_keyGenerator->deleteLater();
-	m_keyGenerator = nullptr;
+	m_rekey->cancel();
 }
 
 void ChangeMasterPassword::newPasswordTextEdited(QString s)
@@ -155,34 +171,40 @@ void ChangeMasterPassword::changePasswordUi()
 	if (m_newPasswordEdit->text() != m_newPasswordRepeatEdit->text()) {
 		m_newPasswordWarningMessage->setText("New passwords don't match, try again");
 		m_newPasswordWarningMessage->show();
-	} else {
-		std::random_device rd;
-
-		m_newSalt.resize(SALT_SZ_V2);
-		for (int i = 0; i < (SALT_SZ_V2/4); i++) {
-			*((uint32_t *)(m_newSalt.data() + (i*4))) = rd();
-		}
-		m_newHashfn.resize(HASH_FN_SZ);
-		m_newHashfn.data()[0] = 1;
-		m_newHashfn.data()[1] = 11 + m_authSecurityLevel->value();
-		m_newHashfn.data()[2] = 8;
-		m_newHashfn.data()[3] = 0;
-		m_newHashfn.data()[4] = 1;
-
-		m_newPasswordEdit->setEnabled(false);
-		m_oldPasswordEdit->setEnabled(false);
-		m_changePasswordBtn->setEnabled(false);
-		m_generatingKeys->show();
-		m_generatingOldKey = true;
-		m_generatingNewKey = false;
-		SignetApplication *app = SignetApplication::get();
-		QByteArray current_hashfn = app->getHashfn();
-		QByteArray current_salt = app->getSalt();
-		int keyLength = app->getKeyLength();
-		m_securityLevelComment->hide();
-		m_keyGenerator->setParams(this->m_oldPasswordEdit->text(), current_hashfn, current_salt, keyLength);
-		m_keyGenerator->start();
+		return;
 	}
+	SignetApplication *app = SignetApplication::get();
+	HwKey::ScryptParams oldScrypt;
+	HwKey::Config cfg;
+	if (!HwKey::parseHashfn(app->getHashfn(), oldScrypt, cfg) &&
+	    !(app->getHashfn().size() > 0 && app->getHashfn().at(0) == HwKey::HASHFN_SCRYPT_LEGACY)) {
+		SignetApplication::messageBoxError(QMessageBox::Critical, "Change Master Password",
+			HwKey::statusMessage(HwKey::STATUS_BAD_SETTINGS), this);
+		return;
+	}
+
+	HwKey::Rekey::Request req;
+	req.oldPassword = m_oldPasswordEdit->text();
+	req.oldHashfn = app->getHashfn();
+	req.oldSalt = app->getSalt();
+	req.newPassword = m_newPasswordEdit->text();
+	req.newScrypt.log2N = 11 + m_authSecurityLevel->value();
+	req.newScrypt.r = 8;
+	req.newScrypt.p = 1;
+	// Keep the YubiKey exactly as it is: same slot, same padding, so the
+	// recovery secret or backup key keeps working.
+	req.newRequired = cfg.required;
+	req.newSlot = cfg.slot;
+	req.knownPadMode = cfg.padMode;
+	req.proof = HwKey::Rekey::PROOF_NONE;
+	req.keyLength = app->getKeyLength();
+
+	setInputsEnabled(false);
+	m_generatingKeys->show();
+	m_securityLevelComment->hide();
+	m_rekey->start(req);
+	HwKey::wipe(req.oldPassword);
+	HwKey::wipe(req.newPassword);
 }
 
 void ChangeMasterPassword::changePasswordFinished(int code)
@@ -190,7 +212,7 @@ void ChangeMasterPassword::changePasswordFinished(int code)
 	if (code != QMessageBox::Ok) {
 		m_securityLevelComment->show();
 		::signetdev_cancel_button_wait();
-		m_changePasswordBtn->setEnabled(true);
+		setInputsEnabled(true);
 	}
 }
 
@@ -202,9 +224,6 @@ void ChangeMasterPassword::signetdevCmdResp(signetdevCmdRespInfo info)
 		return;
 	}
 	m_signetdevCmdToken = -1;
-	m_oldKey.fill(0);
-	m_newKey.fill(0);
-	m_keyGenerator->clearSecrets();
 	if (m_buttonDialog) {
 		m_buttonDialog->done(QMessageBox::Ok);
 		m_buttonDialog->deleteLater();
@@ -221,18 +240,14 @@ void ChangeMasterPassword::signetdevCmdResp(signetdevCmdRespInfo info)
 	}
 	break;
 	case BAD_PASSWORD:
-		m_oldPasswordWarningMessage->setText("Old passord incorrect, try again");
+		m_oldPasswordWarningMessage->setText("Old password incorrect (or not the right YubiKey), try again");
 		m_oldPasswordWarningMessage->show();
-		m_newPasswordEdit->setEnabled(true);
-		m_oldPasswordEdit->setEnabled(true);
-		m_changePasswordBtn->setEnabled(true);
+		setInputsEnabled(true);
 		m_securityLevelComment->show();
 		break;
 	case BUTTON_PRESS_TIMEOUT:
 	case BUTTON_PRESS_CANCELED:
-		m_newPasswordEdit->setEnabled(true);
-		m_oldPasswordEdit->setEnabled(true);
-		m_changePasswordBtn->setEnabled(true);
+		setInputsEnabled(true);
 		m_securityLevelComment->show();
 		break;
 	case SIGNET_ERROR_DISCONNECT:
